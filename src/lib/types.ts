@@ -53,6 +53,18 @@ export interface YouTubeVideo {
   created_at: string;
 }
 
+export interface PublishingRecord {
+  id: string;
+  content_id: string;
+  platform: string;
+  external_id: string | null;
+  external_url: string | null;
+  status: "pending" | "published" | "failed";
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AiGenerationLog {
   id: string;
   content_id: string | null;

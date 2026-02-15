@@ -249,12 +249,137 @@ export async function GET(request: Request) {
     }
   }
 
+  // --- Step 4: Publish to Shopify ---
+  let published = 0;
+
+  const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
+  const shopifyToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+  const shopifyBlogId = process.env.SHOPIFY_BLOG_ID;
+
+  if (shopifyDomain && shopifyToken && shopifyBlogId) {
+    // Find one content item ready to publish that hasn't been published yet
+    const { data: publishCandidates } = await supabase
+      .from("content")
+      .select("id, title, seo_title, seo_description, blog_body, target_keywords, tags")
+      .eq("source", "youtube")
+      .not("blog_body", "is", null)
+      .in("stage", ["publish", "review"])
+      .limit(5);
+
+    for (const candidate of publishCandidates ?? []) {
+      // Check if already published
+      const { data: existingRecord } = await supabase
+        .from("publishing_records")
+        .select("id, status")
+        .eq("content_id", candidate.id)
+        .eq("platform", "shopify")
+        .maybeSingle();
+
+      if (existingRecord?.status === "published") continue;
+
+      // Create or update pending record
+      if (existingRecord) {
+        await supabase
+          .from("publishing_records")
+          .update({ status: "pending", error: null })
+          .eq("id", existingRecord.id);
+      } else {
+        await supabase.from("publishing_records").insert({
+          content_id: candidate.id,
+          platform: "shopify",
+          status: "pending",
+        });
+      }
+
+      // Publish to Shopify
+      const title = candidate.seo_title || candidate.title;
+      const bodyHtml = markdownToHtml(candidate.blog_body!);
+      const tags = (candidate.target_keywords ?? candidate.tags ?? []).join(", ");
+
+      try {
+        const shopifyRes = await fetch(
+          `https://${shopifyDomain}/admin/api/2024-01/blogs/${shopifyBlogId}/articles.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": shopifyToken,
+            },
+            body: JSON.stringify({
+              article: {
+                title,
+                body_html: bodyHtml,
+                published: true,
+                tags,
+                summary_html: candidate.seo_description
+                  ? `<p>${escapeHtml(candidate.seo_description)}</p>`
+                  : undefined,
+              },
+            }),
+          },
+        );
+
+        if (!shopifyRes.ok) {
+          const errBody = await shopifyRes.text();
+          console.error("Shopify publish failed:", shopifyRes.status, errBody);
+
+          await supabase
+            .from("publishing_records")
+            .update({
+              status: "failed",
+              error: `${shopifyRes.status}: ${errBody.substring(0, 500)}`,
+            })
+            .eq("content_id", candidate.id)
+            .eq("platform", "shopify");
+
+          break; // Don't try more on this run
+        }
+
+        const shopifyData = await shopifyRes.json();
+        const article = shopifyData.article;
+        const externalUrl = article?.handle
+          ? `https://${shopifyDomain}/blogs/${shopifyBlogId}/${article.handle}`
+          : null;
+
+        await supabase
+          .from("publishing_records")
+          .update({
+            status: "published",
+            external_id: String(article?.id ?? ""),
+            external_url: externalUrl,
+            error: null,
+          })
+          .eq("content_id", candidate.id)
+          .eq("platform", "shopify");
+
+        await supabase
+          .from("content")
+          .update({ stage: "distribute" })
+          .eq("id", candidate.id);
+
+        published = 1;
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error("Shopify publish error:", errMsg);
+
+        await supabase
+          .from("publishing_records")
+          .update({ status: "failed", error: errMsg.substring(0, 500) })
+          .eq("content_id", candidate.id)
+          .eq("platform", "shopify");
+      }
+
+      break; // Max 1 publish per run
+    }
+  }
+
   return Response.json({
     polled,
     skipped,
     total: items.length,
     transcribed,
     blogGenerated,
+    published,
   });
 }
 
@@ -458,4 +583,52 @@ function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   const cut = text.lastIndexOf(" ", maxLen);
   return text.substring(0, cut > 0 ? cut : maxLen) + "…";
+}
+
+/** Minimal markdown → HTML conversion. No external libraries. */
+function markdownToHtml(md: string): string {
+  return md
+    .split("\n\n")
+    .map((block) => {
+      const trimmed = block.trim();
+      if (!trimmed) return "";
+
+      // Headings
+      if (trimmed.startsWith("### "))
+        return `<h3>${escapeHtml(trimmed.slice(4))}</h3>`;
+      if (trimmed.startsWith("## "))
+        return `<h2>${escapeHtml(trimmed.slice(3))}</h2>`;
+      if (trimmed.startsWith("# "))
+        return `<h1>${escapeHtml(trimmed.slice(2))}</h1>`;
+
+      // Unordered list block
+      const lines = trimmed.split("\n");
+      if (lines.every((l) => /^[-*]\s/.test(l))) {
+        const items = lines
+          .map((l) => `<li>${inlineMarkdown(l.replace(/^[-*]\s+/, ""))}</li>`)
+          .join("\n");
+        return `<ul>\n${items}\n</ul>`;
+      }
+
+      // Paragraph
+      return `<p>${inlineMarkdown(trimmed.replace(/\n/g, " "))}</p>`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** Convert inline markdown (bold, italic) to HTML. */
+function inlineMarkdown(text: string): string {
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/_(.+?)_/g, "<em>$1</em>");
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
