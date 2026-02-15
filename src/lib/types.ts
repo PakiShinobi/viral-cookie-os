@@ -65,6 +65,20 @@ export interface PublishingRecord {
   updated_at: string;
 }
 
+export interface Profile {
+  id: string;
+  user_id: string;
+  youtube_channel_id: string | null;
+  youtube_channel_url: string | null;
+  niche: string;
+  channel_goal: string;
+  ctas: string[];
+  tone: string;
+  audience: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CronRun {
   id: string;
   route: string;
