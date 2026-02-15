@@ -65,6 +65,18 @@ export interface PublishingRecord {
   updated_at: string;
 }
 
+export interface CronRun {
+  id: string;
+  route: string;
+  status: "running" | "success" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  summary: Record<string, number>;
+  error: string | null;
+  created_at: string;
+}
+
 export interface AiGenerationLog {
   id: string;
   content_id: string | null;

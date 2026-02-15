@@ -31,7 +31,9 @@ interface InnerTubePlayerResponse {
 }
 
 export async function GET(request: Request) {
-  // Verify cron secret
+  const admin = createAdminClient();
+
+  // ---- Auth check (before cron run insert to avoid noise) ----
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
@@ -39,348 +41,413 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const youtubeApiKey = process.env.YOUTUBE_API_KEY;
-  const channelId = process.env.YOUTUBE_CHANNEL_ID;
+  // ---- Start cron run tracking ----
+  const startTime = Date.now();
+  const { data: cronRunRow } = await admin
+    .from("cron_runs")
+    .insert({ route: "/api/cron/youtube", status: "running" })
+    .select("id")
+    .single();
 
-  if (!youtubeApiKey || !channelId) {
-    return Response.json(
-      { error: "YOUTUBE_API_KEY and YOUTUBE_CHANNEL_ID must be configured" },
-      { status: 503 },
-    );
-  }
+  const cronRunId: string | null = cronRunRow?.id ?? null;
 
-  const supabase = createAdminClient();
-
-  // Get the first user (single-tenant MVP)
-  const { data: users } = await supabase.auth.admin.listUsers({ perPage: 1 });
-  const userId = users?.users?.[0]?.id;
-
-  if (!userId) {
-    return Response.json({ error: "No users found" }, { status: 500 });
-  }
-
-  // --- Step 1: Poll new uploads ---
-  const uploadsPlaylistId = channelId.replace(/^UC/, "UU");
-
-  const ytUrl = new URL(
-    "https://www.googleapis.com/youtube/v3/playlistItems",
-  );
-  ytUrl.searchParams.set("part", "snippet");
-  ytUrl.searchParams.set("playlistId", uploadsPlaylistId);
-  ytUrl.searchParams.set("maxResults", "5");
-  ytUrl.searchParams.set("key", youtubeApiKey);
-
-  const ytRes = await fetch(ytUrl.toString());
-
-  if (!ytRes.ok) {
-    const body = await ytRes.text();
-    return Response.json(
-      { error: "YouTube API error", detail: body },
-      { status: 502 },
-    );
-  }
-
-  const ytData: YouTubePlaylistResponse = await ytRes.json();
-  const items = ytData.items ?? [];
-
+  // Partial counts — updated as we progress so error handler can snapshot them
   let polled = 0;
   let skipped = 0;
+  let totalItems = 0;
+  let transcribed = 0;
+  let blogGenerated = 0;
+  let published = 0;
 
-  for (const item of items) {
-    const videoId = item.snippet.resourceId.videoId;
-
-    // Check if video already exists (idempotency)
-    const { data: existing } = await supabase
-      .from("youtube_videos")
-      .select("id")
-      .eq("video_id", videoId)
-      .maybeSingle();
-
-    if (existing) {
-      skipped++;
-      continue;
-    }
-
-    // Create content record
-    const { data: content, error: contentError } = await supabase
-      .from("content")
-      .insert({
-        user_id: userId,
-        title: item.snippet.title,
-        content_type: "video",
-        stage: "record",
-        source: "youtube",
-        auto_publish: true,
-        tags: [],
+  async function finishCronRun(
+    status: "success" | "failed",
+    error?: string,
+  ) {
+    if (!cronRunId) return;
+    const durationMs = Date.now() - startTime;
+    await admin
+      .from("cron_runs")
+      .update({
+        status,
+        finished_at: new Date().toISOString(),
+        duration_ms: durationMs,
+        summary: {
+          polled,
+          skipped,
+          total: totalItems,
+          transcribed,
+          blogGenerated,
+          published,
+        },
+        ...(error ? { error: error.substring(0, 1000) } : {}),
       })
-      .select("id")
-      .single();
+      .eq("id", cronRunId);
+  }
 
-    if (contentError) {
-      console.error("Failed to create content:", contentError.message);
-      continue;
+  try {
+    const youtubeApiKey = process.env.YOUTUBE_API_KEY;
+    const channelId = process.env.YOUTUBE_CHANNEL_ID;
+
+    if (!youtubeApiKey || !channelId) {
+      await finishCronRun("failed", "YOUTUBE_API_KEY and YOUTUBE_CHANNEL_ID must be configured");
+      return Response.json(
+        { error: "YOUTUBE_API_KEY and YOUTUBE_CHANNEL_ID must be configured" },
+        { status: 503 },
+      );
     }
 
-    // Create youtube_videos record
-    const { error: videoError } = await supabase
-      .from("youtube_videos")
-      .insert({
-        content_id: content.id,
-        video_id: videoId,
-        title: item.snippet.title,
-        description: item.snippet.description || null,
-        published_at: item.snippet.publishedAt,
-      });
+    // Get first user (single-tenant MVP)
+    const { data: users } = await admin.auth.admin.listUsers({
+      perPage: 1,
+    });
+    const userId = users?.users?.[0]?.id;
 
-    if (videoError) {
-      if (videoError.code === "23505") {
-        await supabase.from("content").delete().eq("id", content.id);
+    if (!userId) {
+      await finishCronRun("failed", "No users found");
+      return Response.json({ error: "No users found" }, { status: 500 });
+    }
+
+    // --- Step 1: Poll new uploads ---
+    const uploadsPlaylistId = channelId.replace(/^UC/, "UU");
+
+    const ytUrl = new URL(
+      "https://www.googleapis.com/youtube/v3/playlistItems",
+    );
+    ytUrl.searchParams.set("part", "snippet");
+    ytUrl.searchParams.set("playlistId", uploadsPlaylistId);
+    ytUrl.searchParams.set("maxResults", "5");
+    ytUrl.searchParams.set("key", youtubeApiKey);
+
+    const ytRes = await fetch(ytUrl.toString());
+
+    if (!ytRes.ok) {
+      const body = await ytRes.text();
+      await finishCronRun("failed", `YouTube API error: ${body.substring(0, 500)}`);
+      return Response.json(
+        { error: "YouTube API error", detail: body },
+        { status: 502 },
+      );
+    }
+
+    const ytData: YouTubePlaylistResponse = await ytRes.json();
+    const items = ytData.items ?? [];
+    totalItems = items.length;
+
+    for (const item of items) {
+      const videoId = item.snippet.resourceId.videoId;
+
+      // Check if video already exists (idempotency)
+      const { data: existing } = await admin
+        .from("youtube_videos")
+        .select("id")
+        .eq("video_id", videoId)
+        .maybeSingle();
+
+      if (existing) {
         skipped++;
         continue;
       }
-      console.error("Failed to create youtube_video:", videoError.message);
-      continue;
-    }
 
-    polled++;
-  }
-
-  // --- Step 2: Fetch transcripts for videos that don't have one yet ---
-  const { data: pendingTranscripts } = await supabase
-    .from("youtube_videos")
-    .select("id, video_id, content_id")
-    .is("transcript", null)
-    .limit(3);
-
-  let transcribed = 0;
-
-  for (const video of pendingTranscripts ?? []) {
-    const transcript = await fetchTranscript(video.video_id);
-
-    // Store transcript (empty string marks "attempted, no captions available")
-    await supabase
-      .from("youtube_videos")
-      .update({ transcript: transcript ?? "" })
-      .eq("id", video.id);
-
-    // If we got a real transcript, update content stage
-    if (transcript && video.content_id) {
-      await supabase
+      // Create content record
+      const { data: content, error: contentError } = await admin
         .from("content")
-        .update({ brief: truncate(transcript, 2000), stage: "review" })
-        .eq("id", video.content_id);
-    }
-
-    transcribed++;
-  }
-
-  // --- Step 3: Generate SEO blog draft from transcript ---
-  let blogGenerated = 0;
-
-  if (process.env.ANTHROPIC_API_KEY) {
-    // Find one content item with a transcript but no blog yet
-    const { data: pendingBlogs } = await supabase
-      .from("youtube_videos")
-      .select("content_id, transcript")
-      .neq("transcript", "")
-      .not("transcript", "is", null)
-      .not("content_id", "is", null)
-      .limit(10);
-
-    // Filter to ones where content.blog_body is null
-    let target: { content_id: string; transcript: string } | null = null;
-
-    for (const row of pendingBlogs ?? []) {
-      const { data: content } = await supabase
-        .from("content")
-        .select("id, title, blog_body")
-        .eq("id", row.content_id)
-        .is("blog_body", null)
-        .maybeSingle();
-
-      if (content) {
-        target = {
-          content_id: content.id,
-          transcript: row.transcript,
-        };
-        break;
-      }
-    }
-
-    if (target) {
-      const { data: contentRow } = await supabase
-        .from("content")
-        .select("title, tags")
-        .eq("id", target.content_id)
+        .insert({
+          user_id: userId,
+          title: item.snippet.title,
+          content_type: "video",
+          stage: "record",
+          source: "youtube",
+          auto_publish: true,
+          tags: [],
+        })
+        .select("id")
         .single();
 
-      if (contentRow) {
-        const result = await generateBlog(
-          contentRow.title,
-          target.transcript,
-          contentRow.tags?.[0] ?? "",
-        );
+      if (contentError) {
+        console.error("Failed to create content:", contentError.message);
+        continue;
+      }
 
-        if (result) {
-          await supabase
-            .from("content")
-            .update({
-              blog_body: result.blogBody,
-              seo_title: result.seoTitle,
-              seo_description: result.seoDescription,
-              target_keywords: result.targetKeywords,
-              stage: "publish",
-            })
-            .eq("id", target.content_id);
+      // Create youtube_videos record
+      const { error: videoError } = await admin
+        .from("youtube_videos")
+        .insert({
+          content_id: content.id,
+          video_id: videoId,
+          title: item.snippet.title,
+          description: item.snippet.description || null,
+          published_at: item.snippet.publishedAt,
+        });
 
-          await supabase.from("ai_generation_logs").insert({
-            content_id: target.content_id,
-            user_id: userId,
-            operation: "generate_blog",
-            model: result.model,
-            input_tokens: result.inputTokens,
-            output_tokens: result.outputTokens,
-            accepted: true,
-          });
+      if (videoError) {
+        if (videoError.code === "23505") {
+          await admin.from("content").delete().eq("id", content.id);
+          skipped++;
+          continue;
+        }
+        console.error("Failed to create youtube_video:", videoError.message);
+        continue;
+      }
 
-          blogGenerated = 1;
+      polled++;
+    }
+
+    // --- Step 2: Fetch transcripts for videos that don't have one yet ---
+    const { data: pendingTranscripts } = await admin
+      .from("youtube_videos")
+      .select("id, video_id, content_id")
+      .is("transcript", null)
+      .limit(3);
+
+    for (const video of pendingTranscripts ?? []) {
+      const transcript = await fetchTranscript(video.video_id);
+
+      // Store transcript (empty string marks "attempted, no captions available")
+      await admin
+        .from("youtube_videos")
+        .update({ transcript: transcript ?? "" })
+        .eq("id", video.id);
+
+      // If we got a real transcript, update content stage
+      if (transcript && video.content_id) {
+        await admin
+          .from("content")
+          .update({ brief: truncate(transcript, 2000), stage: "review" })
+          .eq("id", video.content_id);
+      }
+
+      transcribed++;
+    }
+
+    // --- Step 3: Generate SEO blog draft from transcript ---
+    if (process.env.ANTHROPIC_API_KEY) {
+      // Find one content item with a transcript but no blog yet
+      const { data: pendingBlogs } = await admin
+        .from("youtube_videos")
+        .select("content_id, transcript")
+        .neq("transcript", "")
+        .not("transcript", "is", null)
+        .not("content_id", "is", null)
+        .limit(10);
+
+      // Filter to ones where content.blog_body is null
+      let target: { content_id: string; transcript: string } | null = null;
+
+      for (const row of pendingBlogs ?? []) {
+        const { data: contentRow } = await admin
+          .from("content")
+          .select("id, title, blog_body")
+          .eq("id", row.content_id)
+          .is("blog_body", null)
+          .maybeSingle();
+
+        if (contentRow) {
+          target = {
+            content_id: contentRow.id,
+            transcript: row.transcript,
+          };
+          break;
+        }
+      }
+
+      if (target) {
+        const { data: contentRow } = await admin
+          .from("content")
+          .select("title, tags")
+          .eq("id", target.content_id)
+          .single();
+
+        if (contentRow) {
+          const result = await generateBlog(
+            contentRow.title,
+            target.transcript,
+            contentRow.tags?.[0] ?? "",
+          );
+
+          if (result) {
+            await admin
+              .from("content")
+              .update({
+                blog_body: result.blogBody,
+                seo_title: result.seoTitle,
+                seo_description: result.seoDescription,
+                target_keywords: result.targetKeywords,
+                stage: "publish",
+              })
+              .eq("id", target.content_id);
+
+            await admin.from("ai_generation_logs").insert({
+              content_id: target.content_id,
+              user_id: userId,
+              operation: "generate_blog",
+              model: result.model,
+              input_tokens: result.inputTokens,
+              output_tokens: result.outputTokens,
+              accepted: true,
+            });
+
+            blogGenerated = 1;
+          }
         }
       }
     }
-  }
 
-  // --- Step 4: Publish to Shopify ---
-  let published = 0;
+    // --- Step 4: Publish to Shopify ---
+    const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
+    const shopifyToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+    const shopifyBlogId = process.env.SHOPIFY_BLOG_ID;
 
-  const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
-  const shopifyToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-  const shopifyBlogId = process.env.SHOPIFY_BLOG_ID;
+    if (shopifyDomain && shopifyToken && shopifyBlogId) {
+      // Find one content item ready to publish that hasn't been published yet
+      const { data: publishCandidates } = await admin
+        .from("content")
+        .select(
+          "id, title, seo_title, seo_description, blog_body, target_keywords, tags",
+        )
+        .eq("source", "youtube")
+        .not("blog_body", "is", null)
+        .in("stage", ["publish", "review"])
+        .limit(5);
 
-  if (shopifyDomain && shopifyToken && shopifyBlogId) {
-    // Find one content item ready to publish that hasn't been published yet
-    const { data: publishCandidates } = await supabase
-      .from("content")
-      .select("id, title, seo_title, seo_description, blog_body, target_keywords, tags")
-      .eq("source", "youtube")
-      .not("blog_body", "is", null)
-      .in("stage", ["publish", "review"])
-      .limit(5);
-
-    for (const candidate of publishCandidates ?? []) {
-      // Check if already published
-      const { data: existingRecord } = await supabase
-        .from("publishing_records")
-        .select("id, status")
-        .eq("content_id", candidate.id)
-        .eq("platform", "shopify")
-        .maybeSingle();
-
-      if (existingRecord?.status === "published") continue;
-
-      // Create or update pending record
-      if (existingRecord) {
-        await supabase
+      for (const candidate of publishCandidates ?? []) {
+        // Check if already published
+        const { data: existingRecord } = await admin
           .from("publishing_records")
-          .update({ status: "pending", error: null })
-          .eq("id", existingRecord.id);
-      } else {
-        await supabase.from("publishing_records").insert({
-          content_id: candidate.id,
-          platform: "shopify",
-          status: "pending",
-        });
-      }
+          .select("id, status")
+          .eq("content_id", candidate.id)
+          .eq("platform", "shopify")
+          .maybeSingle();
 
-      // Publish to Shopify
-      const title = candidate.seo_title || candidate.title;
-      const bodyHtml = markdownToHtml(candidate.blog_body!);
-      const tags = (candidate.target_keywords ?? candidate.tags ?? []).join(", ");
+        if (existingRecord?.status === "published") continue;
 
-      try {
-        const shopifyRes = await fetch(
-          `https://${shopifyDomain}/admin/api/2024-01/blogs/${shopifyBlogId}/articles.json`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Shopify-Access-Token": shopifyToken,
-            },
-            body: JSON.stringify({
-              article: {
-                title,
-                body_html: bodyHtml,
-                published: true,
-                tags,
-                summary_html: candidate.seo_description
-                  ? `<p>${escapeHtml(candidate.seo_description)}</p>`
-                  : undefined,
+        // Create or update pending record
+        if (existingRecord) {
+          await admin
+            .from("publishing_records")
+            .update({ status: "pending", error: null })
+            .eq("id", existingRecord.id);
+        } else {
+          await admin.from("publishing_records").insert({
+            content_id: candidate.id,
+            platform: "shopify",
+            status: "pending",
+          });
+        }
+
+        // Publish to Shopify
+        const title = candidate.seo_title || candidate.title;
+        const bodyHtml = markdownToHtml(candidate.blog_body!);
+        const tags = (
+          candidate.target_keywords ??
+          candidate.tags ??
+          []
+        ).join(", ");
+
+        try {
+          const shopifyRes = await fetch(
+            `https://${shopifyDomain}/admin/api/2024-01/blogs/${shopifyBlogId}/articles.json`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Shopify-Access-Token": shopifyToken,
               },
-            }),
-          },
-        );
+              body: JSON.stringify({
+                article: {
+                  title,
+                  body_html: bodyHtml,
+                  published: true,
+                  tags,
+                  summary_html: candidate.seo_description
+                    ? `<p>${escapeHtml(candidate.seo_description)}</p>`
+                    : undefined,
+                },
+              }),
+            },
+          );
 
-        if (!shopifyRes.ok) {
-          const errBody = await shopifyRes.text();
-          console.error("Shopify publish failed:", shopifyRes.status, errBody);
+          if (!shopifyRes.ok) {
+            const errBody = await shopifyRes.text();
+            console.error(
+              "Shopify publish failed:",
+              shopifyRes.status,
+              errBody,
+            );
 
-          await supabase
+            await admin
+              .from("publishing_records")
+              .update({
+                status: "failed",
+                error: `${shopifyRes.status}: ${errBody.substring(0, 500)}`,
+              })
+              .eq("content_id", candidate.id)
+              .eq("platform", "shopify");
+
+            break; // Don't try more on this run
+          }
+
+          const shopifyData = await shopifyRes.json();
+          const article = shopifyData.article;
+          const externalUrl = article?.handle
+            ? `https://${shopifyDomain}/blogs/${shopifyBlogId}/${article.handle}`
+            : null;
+
+          await admin
             .from("publishing_records")
             .update({
-              status: "failed",
-              error: `${shopifyRes.status}: ${errBody.substring(0, 500)}`,
+              status: "published",
+              external_id: String(article?.id ?? ""),
+              external_url: externalUrl,
+              error: null,
             })
             .eq("content_id", candidate.id)
             .eq("platform", "shopify");
 
-          break; // Don't try more on this run
+          await admin
+            .from("content")
+            .update({ stage: "distribute" })
+            .eq("id", candidate.id);
+
+          published = 1;
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error("Shopify publish error:", errMsg);
+
+          await admin
+            .from("publishing_records")
+            .update({
+              status: "failed",
+              error: errMsg.substring(0, 500),
+            })
+            .eq("content_id", candidate.id)
+            .eq("platform", "shopify");
         }
 
-        const shopifyData = await shopifyRes.json();
-        const article = shopifyData.article;
-        const externalUrl = article?.handle
-          ? `https://${shopifyDomain}/blogs/${shopifyBlogId}/${article.handle}`
-          : null;
-
-        await supabase
-          .from("publishing_records")
-          .update({
-            status: "published",
-            external_id: String(article?.id ?? ""),
-            external_url: externalUrl,
-            error: null,
-          })
-          .eq("content_id", candidate.id)
-          .eq("platform", "shopify");
-
-        await supabase
-          .from("content")
-          .update({ stage: "distribute" })
-          .eq("id", candidate.id);
-
-        published = 1;
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        console.error("Shopify publish error:", errMsg);
-
-        await supabase
-          .from("publishing_records")
-          .update({ status: "failed", error: errMsg.substring(0, 500) })
-          .eq("content_id", candidate.id)
-          .eq("platform", "shopify");
+        break; // Max 1 publish per run
       }
-
-      break; // Max 1 publish per run
     }
-  }
 
-  return Response.json({
-    polled,
-    skipped,
-    total: items.length,
-    transcribed,
-    blogGenerated,
-    published,
-  });
+    // ---- Success: finalize cron run ----
+    const summary = {
+      polled,
+      skipped,
+      total: totalItems,
+      transcribed,
+      blogGenerated,
+      published,
+    };
+
+    await finishCronRun("success");
+
+    return Response.json(summary);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await finishCronRun("failed", message);
+    return Response.json(
+      { error: "Cron failed", detail: message },
+      { status: 500 },
+    );
+  }
 }
 
 /**
@@ -413,7 +480,10 @@ async function fetchTranscript(videoId: string): Promise<string | null> {
     );
 
     if (!playerRes.ok) {
-      console.error(`InnerTube player failed for ${videoId}:`, playerRes.status);
+      console.error(
+        `InnerTube player failed for ${videoId}:`,
+        playerRes.status,
+      );
       return null;
     }
 
@@ -436,7 +506,10 @@ async function fetchTranscript(videoId: string): Promise<string | null> {
     // Fetch caption XML
     const captionRes = await fetch(chosen.baseUrl);
     if (!captionRes.ok) {
-      console.error(`Caption download failed for ${videoId}:`, captionRes.status);
+      console.error(
+        `Caption download failed for ${videoId}:`,
+        captionRes.status,
+      );
       return null;
     }
 
@@ -605,7 +678,10 @@ function markdownToHtml(md: string): string {
       const lines = trimmed.split("\n");
       if (lines.every((l) => /^[-*]\s/.test(l))) {
         const items = lines
-          .map((l) => `<li>${inlineMarkdown(l.replace(/^[-*]\s+/, ""))}</li>`)
+          .map(
+            (l) =>
+              `<li>${inlineMarkdown(l.replace(/^[-*]\s+/, ""))}</li>`,
+          )
           .join("\n");
         return `<ul>\n${items}\n</ul>`;
       }
