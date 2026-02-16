@@ -15,15 +15,20 @@ export function Sidebar({ email }: { email: string }) {
   }
 
   const links = [
+    { href: "/dashboard", label: "Dashboard" },
     { href: "/content", label: "Content" },
+    { href: "/titles", label: "Titles" },
+    { href: "/calendar", label: "Calendar" },
     { href: "/automation", label: "Automation" },
     { href: "/profile", label: "Profile" },
   ];
 
   return (
-    <aside className="flex w-56 flex-col border-r border-border bg-white">
-      <div className="border-b border-border px-4 py-4">
-        <h1 className="text-sm font-bold tracking-tight">Viral Cookie OS</h1>
+    <aside className="flex w-56 flex-col border-r border-slate-800 bg-slate-900">
+      <div className="border-b border-slate-800 px-4 py-4">
+        <h1 className="text-sm font-bold tracking-tight text-white">
+          Viral Cookie OS
+        </h1>
       </div>
 
       <nav className="flex-1 space-y-1 p-2">
@@ -35,8 +40,8 @@ export function Sidebar({ email }: { email: string }) {
               href={link.href}
               className={`block rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                 active
-                  ? "bg-surface text-foreground"
-                  : "text-muted hover:bg-surface hover:text-foreground"
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-400 hover:bg-slate-800 hover:text-white"
               }`}
             >
               {link.label}
@@ -45,11 +50,11 @@ export function Sidebar({ email }: { email: string }) {
         })}
       </nav>
 
-      <div className="border-t border-border p-4">
-        <p className="truncate text-xs text-muted">{email}</p>
+      <div className="border-t border-slate-800 p-4">
+        <p className="truncate text-xs text-slate-500">{email}</p>
         <button
           onClick={handleSignOut}
-          className="mt-2 text-xs text-muted transition-colors hover:text-foreground"
+          className="mt-2 text-xs text-slate-500 transition-colors hover:text-white"
         >
           Sign out
         </button>

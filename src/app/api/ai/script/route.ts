@@ -1,131 +1,194 @@
-import { createServerClient } from "@/lib/supabase";
+import { createAdminClient } from "@/lib/supabase";
 import Anthropic from "@anthropic-ai/sdk";
-import type { Content } from "@/lib/types";
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
+  const body = await req.json();
+  const { contentId } = body;
+
+  if (!contentId) {
+    return Response.json({ error: "Missing contentId" }, { status: 400 });
+  }
+
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json(
-      { error: "ANTHROPIC_API_KEY is not configured. Add it to your environment variables." },
+      { error: "ANTHROPIC_API_KEY not configured" },
       { status: 503 },
     );
   }
 
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { contentId } = await request.json();
-  if (!contentId) {
-    return Response.json({ error: "contentId is required" }, { status: 400 });
-  }
+  const supabase = createAdminClient();
 
   const { data: content } = await supabase
     .from("content")
-    .select("*")
+    .select(
+      `
+      id,
+      title,
+      brief,
+      content_type,
+      script_style_id,
+      target_duration_minutes,
+      blueprint_id,
+      script_styles (
+        id,
+        name,
+        system_prompt,
+        temperature
+      )
+    `,
+    )
     .eq("id", contentId)
-    .single<Content>();
+    .single();
 
   if (!content) {
     return Response.json({ error: "Content not found" }, { status: 404 });
   }
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // ---------------------------
+  // Resolve Blueprint
+  // ---------------------------
 
-  const niche = content.tags.length > 0 ? content.tags[0] : "";
-  const contentType = content.content_type.replace("_", " ");
+  let blueprintConfig: Record<string, unknown> | null = null;
 
-  const systemPrompt = `You are an expert retention-optimized content scriptwriter. You write scripts engineered for maximum viewer retention using proven psychological patterns. Your output is always a ready-to-read script — no meta-commentary, no explanations, just the script itself. Write in a conversational, high-energy tone.`;
+  if (content.blueprint_id) {
+    const { data: blueprint } = await supabase
+      .from("script_blueprints")
+      .select("section_config")
+      .eq("id", content.blueprint_id)
+      .single();
 
-  const userPrompt = [
-    `Write a retention-optimized ${contentType} script.`,
-    ``,
-    `Title: ${content.title}`,
-    niche ? `Niche/Topic: ${niche}` : "",
-    content.brief ? `Creator's notes: ${content.brief}` : "",
-    ``,
-    `Structure the script using these exact sections:`,
-    ``,
-    `**HOOK** (first 3 seconds)`,
-    `A pattern-interrupting opening line that stops the scroll. Use a bold claim, surprising fact, or direct challenge. No greetings, no intros.`,
-    ``,
-    `**CURIOSITY LOOP**`,
-    `Immediately after the hook, plant an open loop — tease what's coming without revealing it. Make the viewer need to keep watching.`,
-    ``,
-    `**CORE VALUE**`,
-    `Deliver the main content. Be specific, use concrete examples. Each point should flow naturally into the next. Keep paragraphs short and punchy.`,
-    ``,
-    `**PATTERN INTERRUPT**`,
-    `Mid-script, shift energy — change tone, pose a question, introduce a counterpoint, or use a brief story. This re-engages attention.`,
-    ``,
-    `**PAYOFF**`,
-    `Deliver on the promise from the hook and curiosity loop. Make the viewer feel rewarded for staying.`,
-    ``,
-    `**CTA**`,
-    `End with a single, clear call to action. Make it feel natural, not salesy.`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+    blueprintConfig = blueprint?.section_config ?? null;
+  } else if (content.target_duration_minutes) {
+    const { data: blueprint } = await supabase
+      .from("script_blueprints")
+      .select("section_config")
+      .lte("min_minutes", content.target_duration_minutes)
+      .gte("max_minutes", content.target_duration_minutes)
+      .maybeSingle();
 
-  const model = "claude-sonnet-4-5-20250929";
+    blueprintConfig = blueprint?.section_config ?? null;
+  }
 
-  const encoder = new TextEncoder();
+  // Fallback blueprint
+  if (!blueprintConfig) {
+    blueprintConfig = {
+      sections: [
+        { key: "hook", weight: 0.15 },
+        { key: "setup", weight: 0.15 },
+        { key: "core", weight: 0.4 },
+        { key: "payoff", weight: 0.2 },
+        { key: "cta", weight: 0.1 },
+      ],
+    };
+  }
+
+  const styleData = Array.isArray(content.script_styles)
+    ? content.script_styles[0]
+    : content.script_styles;
+
+  const stylePrompt =
+    styleData?.system_prompt ??
+    "Write in a clear, engaging, high-retention style.";
+
+  const temperature = styleData?.temperature ?? 0.7;
+
+  const anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  });
+
+  const systemPrompt = `
+You are a high-level YouTube script strategist.
+
+You optimize for:
+- Retention
+- Curiosity gaps
+- Open loops
+- Escalation
+- Strategic re-hooks
+- Emotional pacing
+- Strong CTAs
+
+You will receive:
+1. A structural blueprint (JSON)
+2. A style layer
+3. Creator context
+
+You must:
+- Follow the blueprint proportionally.
+- Allocate depth based on section weights.
+- Scale output based on target duration.
+- Never artificially compress the script.
+- Maintain narrative integrity.
+`;
+
+  const userPrompt = `
+STYLE:
+${stylePrompt}
+
+STRUCTURAL BLUEPRINT:
+${JSON.stringify(blueprintConfig, null, 2)}
+
+TARGET DURATION (minutes):
+${content.target_duration_minutes ?? "Not specified"}
+
+CONTENT TYPE:
+${content.content_type}
+
+TITLE:
+${content.title}
+
+CREATOR NOTES:
+${content.brief ?? "None provided"}
+
+INSTRUCTIONS:
+Generate a fully structured script following the blueprint.
+Ensure seamless transitions between sections.
+Use escalating tension.
+Re-hook strategically.
+Scale proportionally to target duration.
+`;
+
+  // Stream the response as SSE
   const stream = new ReadableStream({
     async start(controller) {
+      const encoder = new TextEncoder();
+
+      function send(data: string) {
+        controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+      }
+
       try {
-        const response = await anthropic.messages.create({
-          model,
+        const response = anthropic.messages.stream({
+          model: "claude-sonnet-4-5-20250929",
           max_tokens: 4096,
+          temperature,
           system: systemPrompt,
           messages: [{ role: "user", content: userPrompt }],
-          stream: true,
         });
 
-        let inputTokens = 0;
-        let outputTokens = 0;
-
-        for await (const event of response) {
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            const data = JSON.stringify({
-              type: "text",
-              text: event.delta.text,
-            });
-            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-          }
-
-          if (event.type === "message_delta" && event.usage) {
-            outputTokens = event.usage.output_tokens;
-          }
-
-          if (event.type === "message_start" && event.message.usage) {
-            inputTokens = event.message.usage.input_tokens;
-          }
-        }
-
-        const doneData = JSON.stringify({
-          type: "done",
-          usage: {
-            model,
-            input_tokens: inputTokens,
-            output_tokens: outputTokens,
-          },
+        response.on("text", (text) => {
+          send(JSON.stringify({ type: "text", text }));
         });
-        controller.enqueue(encoder.encode(`data: ${doneData}\n\n`));
-        controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+
+        const finalMessage = await response.finalMessage();
+
+        send(
+          JSON.stringify({
+            type: "done",
+            usage: {
+              model: finalMessage.model,
+              input_tokens: finalMessage.usage.input_tokens,
+              output_tokens: finalMessage.usage.output_tokens,
+            },
+          }),
+        );
+
+        send("[DONE]");
         controller.close();
       } catch (err) {
-        const errorData = JSON.stringify({
-          type: "error",
-          error: err instanceof Error ? err.message : "Generation failed",
-        });
-        controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
+        const message = err instanceof Error ? err.message : String(err);
+        send(JSON.stringify({ type: "error", error: message }));
+        send("[DONE]");
         controller.close();
       }
     },

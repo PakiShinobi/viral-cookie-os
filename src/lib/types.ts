@@ -102,3 +102,65 @@ export interface AiGenerationLog {
   accepted: boolean | null;
   created_at: string;
 }
+
+export type VideoStyle =
+  | "documentary"
+  | "how_to"
+  | "news"
+  | "opinion"
+  | "breakdown"
+  | "story"
+  | "educational";
+
+export type TitleIdeaStatus = "draft" | "recorded" | "published" | "deleted";
+
+export type CalendarSlotStatus = "planned" | "in_progress" | "done" | "skipped";
+
+export interface TitleIdea {
+  id: string;
+  user_id: string;
+  title: string;
+  video_style: VideoStyle;
+  target_duration_minutes: number | null;
+  status: TitleIdeaStatus;
+  content_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CalendarSlot {
+  id: string;
+  user_id: string;
+  slot_date: string;
+  title_idea_id: string | null;
+  content_id: string | null;
+  status: CalendarSlotStatus;
+  created_at: string;
+  updated_at: string;
+  title_idea?: TitleIdea;
+}
+/* ===============================
+   Phase 6A – Guided Wizard Types
+================================ */
+
+export type WizardStep =
+  | "title"
+  | "thumbnail"
+  | "script"
+  | "review"
+  | "complete";
+
+export type WizardStatus =
+  | "in_progress"
+  | "complete"
+  | "abandoned";
+
+export interface WizardSession {
+  id: string;
+  user_id: string;
+  content_id: string;
+  current_step: WizardStep;
+  status: WizardStatus;
+  created_at: string;
+  updated_at: string;
+}
