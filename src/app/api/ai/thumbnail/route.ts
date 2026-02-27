@@ -2,14 +2,24 @@ import { createServerClient } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  const supabase = createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const supabase = await createServerClient();
 
-  if (!user) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json();
+  let body: any;
+
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   const {
     contentId,
@@ -17,13 +27,23 @@ export async function POST(req: Request) {
     avatarImageUrl,
     headlineText,
     stylePreset,
-    replacePerson
+    replacePerson,
   } = body;
+
+  if (!contentId || !baseImageUrl || !headlineText) {
+    return NextResponse.json(
+      { error: "Missing required fields" },
+      { status: 400 }
+    );
+  }
 
   const apiKey = process.env.NANOBANANA_API_KEY;
 
   if (!apiKey) {
-    return NextResponse.json({ error: "NanoBanana key missing" }, { status: 503 });
+    return NextResponse.json(
+      { error: "NanoBanana key missing" },
+      { status: 503 }
+    );
   }
 
   const prompt = `
@@ -31,14 +51,17 @@ You are editing a YouTube thumbnail.
 
 Keep layout, lighting and framing identical.
 
-${replacePerson && avatarImageUrl ? 
-`Replace the existing person with the uploaded avatar image.` : ""}
+${
+  replacePerson && avatarImageUrl
+    ? `Replace the existing person with the uploaded avatar image.`
+    : ""
+}
 
 Change headline text to:
 "${headlineText}"
 
 Style direction:
-${stylePreset}
+${stylePreset || "High contrast, bold YouTube style"}
 
 High CTR, bold, readable text, strong contrast.
 `;
@@ -46,14 +69,14 @@ High CTR, bold, readable text, strong contrast.
   const nanoRes = await fetch("https://api.nanobanana.ai/v1/edit", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       base_image: baseImageUrl,
-      avatar_image: avatarImageUrl,
-      prompt
-    })
+      avatar_image: avatarImageUrl || null,
+      prompt,
+    }),
   });
 
   if (!nanoRes.ok) {
@@ -62,25 +85,50 @@ High CTR, bold, readable text, strong contrast.
   }
 
   const result = await nanoRes.json();
+
+  if (!result?.image_base64) {
+    return NextResponse.json(
+      { error: "NanoBanana returned invalid image response" },
+      { status: 500 }
+    );
+  }
+
   const imageBuffer = Buffer.from(result.image_base64, "base64");
 
-  const storagePath = `thumbnails/${user.id}/${contentId}/v1.png`;
+  const storagePath = `${user.id}/${contentId}/v1.png`;
 
-  await supabase.storage
+  const { error: uploadError } = await supabase.storage
     .from("thumbnails")
     .upload(storagePath, imageBuffer, {
       contentType: "image/png",
-      upsert: true
+      upsert: true,
     });
 
-  await supabase.from("thumbnails").insert({
+  if (uploadError) {
+    return NextResponse.json(
+      { error: uploadError.message },
+      { status: 500 }
+    );
+  }
+
+  const { error: insertError } = await supabase.from("thumbnails").insert({
     content_id: contentId,
     user_id: user.id,
     version: 1,
     is_primary: true,
     storage_path: storagePath,
-    prompt
+    prompt,
   });
 
-  return NextResponse.json({ success: true, path: storagePath });
+  if (insertError) {
+    return NextResponse.json(
+      { error: insertError.message },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    path: storagePath,
+  });
 }
