@@ -8,7 +8,7 @@ import type { WizardStep } from "@/lib/types";
    Create Wizard Session
 =========================== */
 export async function createWizardSession(contentId: string) {
-  const supabase = createServerClient();
+  const supabase = await createServerClient();
 
   const {
     data: { user },
@@ -45,7 +45,7 @@ export async function createWizardSession(contentId: string) {
    Get Wizard Session
 =========================== */
 export async function getWizardSession(contentId: string) {
-  const supabase = createServerClient();
+  const supabase = await createServerClient();
 
   const {
     data: { user },
@@ -66,11 +66,8 @@ export async function getWizardSession(contentId: string) {
 /* ===========================
    Advance Wizard Step
 =========================== */
-export async function advanceWizardStep(
-  contentId: string,
-  nextStep: WizardStep
-) {
-  const supabase = createServerClient();
+export async function advanceWizardStep(contentId: string, nextStep: WizardStep) {
+  const supabase = await createServerClient();
 
   const {
     data: { user },
@@ -80,9 +77,7 @@ export async function advanceWizardStep(
 
   const { error } = await supabase
     .from("wizard_sessions")
-    .update({
-      current_step: nextStep,
-    })
+    .update({ current_step: nextStep })
     .eq("content_id", contentId)
     .eq("user_id", user.id);
 
@@ -95,7 +90,7 @@ export async function advanceWizardStep(
    Complete Wizard
 =========================== */
 export async function completeWizard(contentId: string) {
-  const supabase = createServerClient();
+  const supabase = await createServerClient();
 
   const {
     data: { user },
@@ -115,4 +110,27 @@ export async function completeWizard(contentId: string) {
   if (error) return { error: error.message };
 
   redirect(`/content/${contentId}`);
+}
+
+/* ===========================
+   Update Content Title
+=========================== */
+export async function updateContentTitle(contentId: string, title: string) {
+  const supabase = await createServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Unauthorized" };
+
+  const { error } = await supabase
+    .from("content")
+    .update({ title })
+    .eq("id", contentId)
+    .eq("user_id", user.id);
+
+  if (error) return { error: error.message };
+
+  return { success: true };
 }
