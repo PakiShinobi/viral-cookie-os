@@ -8,29 +8,38 @@ interface Props {
 }
 
 export default async function WizardPage({ params }: Props) {
-  const supabase = createServerClient();
+  const supabase = await createServerClient();
 
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
-  if (!user) return notFound();
+  if (userError || !user) {
+    return notFound();
+  }
 
   // Verify content belongs to user
-  const { data: content } = await supabase
+  const { data: content, error: contentError } = await supabase
     .from("content")
     .select("id, title")
     .eq("id", params.id)
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (!content) return notFound();
+  if (contentError || !content) {
+    return notFound();
+  }
 
   // Get or create wizard session
   let session = await getWizardSession(params.id);
 
-  if (!session) {
+  if (!session || "error" in session) {
     session = await createWizardSession(params.id);
+  }
+
+  if (!session || "error" in session) {
+    return notFound();
   }
 
   return (
