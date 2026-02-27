@@ -1,84 +1,105 @@
 "use client";
 
-import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { useState } from "react";
+import { createBrowserClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const supabase = createBrowserClient();
+  const router = useRouter();
+
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError("");
+    setError(null);
 
-    const supabase = createBrowserClient();
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
+      password,
     });
 
     if (error) {
       setError(error.message);
       setLoading(false);
-    } else {
-      setSent(true);
-      setLoading(false);
+      return;
     }
+
+    router.push("/dashboard");
+    router.refresh();
+  }
+
+  async function handleSignup(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+      return;
+    }
+
+    router.push("/dashboard");
+    router.refresh();
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface">
-      <div className="w-full max-w-sm space-y-8 px-4">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight">Viral Cookie OS</h1>
-          <p className="mt-2 text-sm text-muted">
-            Sign in to your content operating system
-          </p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+      <form
+        onSubmit={handleLogin}
+        className="bg-slate-900 border border-slate-800 rounded-xl p-8 w-full max-w-md space-y-4"
+      >
+        <h1 className="text-xl font-semibold">Creator OS Login</h1>
 
-        {sent ? (
-          <div className="rounded-lg border border-border bg-white p-6 text-center">
-            <p className="font-medium">Check your email</p>
-            <p className="mt-2 text-sm text-muted">
-              We sent a magic link to <strong>{email}</strong>
-            </p>
-          </div>
-        ) : (
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="you@example.com"
-                className="mt-1 block w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-              />
-            </div>
-
-            {error && (
-              <p className="text-sm text-error">{error}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
-            >
-              {loading ? "Sending..." : "Send magic link"}
-            </button>
-          </form>
+        {error && (
+          <div className="text-red-400 text-sm">{error}</div>
         )}
-      </div>
+
+        <input
+          type="email"
+          placeholder="Email"
+          className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+
+        <input
+          type="password"
+          placeholder="Password"
+          className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded"
+        >
+          {loading ? "Loading..." : "Login"}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleSignup}
+          disabled={loading}
+          className="w-full border border-slate-700 py-2 rounded mt-2"
+        >
+          Create Account
+        </button>
+      </form>
     </div>
   );
 }
