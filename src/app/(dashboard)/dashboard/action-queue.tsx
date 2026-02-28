@@ -10,22 +10,27 @@ export function ActionQueue({
   emptyText: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900">
-      <div className="border-b border-slate-800 px-4 py-3">
-        <h3 className="text-sm font-semibold text-white">{title}</h3>
+    <div className="rounded-xl border border-border bg-surface">
+      <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-[13px] font-semibold text-foreground">{title}</h3>
+          {items.length > 0 && (
+            <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium text-muted tabular-nums">
+              {items.length}
+            </span>
+          )}
+        </div>
       </div>
-      <div className="p-2">
+      <div className="p-1.5">
         {items.length === 0 ? (
-          <p className="px-2 py-3 text-center text-xs text-slate-500">
-            {emptyText}
-          </p>
+          <p className="py-4 text-center text-xs text-muted">{emptyText}</p>
         ) : (
-          <ul className="space-y-0.5">
+          <ul>
             {items.map((item) => (
               <li key={item.id}>
                 <Link
                   href={`/content/${item.id}`}
-                  className="block truncate rounded-md px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
+                  className="block truncate rounded-lg px-3 py-2 text-[13px] text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
                 >
                   {item.title}
                 </Link>

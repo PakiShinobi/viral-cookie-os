@@ -6,6 +6,7 @@ import type {
   PublishingRecord,
 } from "@/lib/types";
 import Link from "next/link";
+import { PageShell } from "@/components/ui/page-shell";
 import { MetricCard } from "./metric-card";
 import { ActionQueue } from "./action-queue";
 import { WeekStrip } from "./week-strip";
@@ -148,58 +149,58 @@ export default async function DashboardPage() {
   });
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <section className="space-y-10">
-        {/* 1. Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Command Centre</h1>
-            <p className="mt-1 text-sm text-slate-400">{dateDisplay}</p>
-          </div>
-          <Link
-            href="/content/new"
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-          >
-            + New Content
-          </Link>
+    <PageShell>
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Command Centre
+          </h1>
+          <p className="mt-1 text-sm text-muted">{dateDisplay}</p>
         </div>
+        <Link
+          href="/content/new"
+          className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-hover"
+        >
+          New Content
+        </Link>
+      </div>
 
-        {/* 2. Metrics Grid */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <MetricCard value={plannedCount} label="Planned This Week" />
-          <MetricCard value={scriptsReadyCount} label="Scripts Ready" />
-          <MetricCard value={readyToPublishCount} label="Ready to Publish" />
-          <MetricCard value={distributedCount} label="Distributed" />
-        </div>
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <MetricCard value={plannedCount} label="Planned This Week" />
+        <MetricCard value={scriptsReadyCount} label="Scripts Ready" />
+        <MetricCard value={readyToPublishCount} label="Ready to Publish" />
+        <MetricCard value={distributedCount} label="Distributed" />
+      </div>
 
-        {/* 3. Action Queues */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <ActionQueue
-            title="Needs Script"
-            items={scriptQueue}
-            emptyText="No items in script stage"
-          />
-          <ActionQueue
-            title="Needs Review"
-            items={reviewQueue}
-            emptyText="No items in review stage"
-          />
-          <ActionQueue
-            title="Ready to Publish"
-            items={publishQueue}
-            emptyText="No items ready to publish"
-          />
-        </div>
-
-        {/* 4. Week Strip */}
-        <WeekStrip slots={weekSlots} weekStart={monday} />
-
-        {/* 5. Automation Panel */}
-        <AutomationPanel
-          cronRuns={cronRuns}
-          failedPublishing={failedPublishing}
+      {/* Action Queues */}
+      <div className="grid gap-3 md:grid-cols-3">
+        <ActionQueue
+          title="Needs Script"
+          items={scriptQueue}
+          emptyText="No items in script stage"
         />
-      </section>
-    </div>
+        <ActionQueue
+          title="Needs Review"
+          items={reviewQueue}
+          emptyText="No items in review stage"
+        />
+        <ActionQueue
+          title="Ready to Publish"
+          items={publishQueue}
+          emptyText="No items ready to publish"
+        />
+      </div>
+
+      {/* Week Strip */}
+      <WeekStrip slots={weekSlots} weekStart={monday} />
+
+      {/* Automation Panel */}
+      <AutomationPanel
+        cronRuns={cronRuns}
+        failedPublishing={failedPublishing}
+      />
+    </PageShell>
   );
 }

@@ -1,15 +1,15 @@
 import type { CronRun, PublishingRecord } from "@/lib/types";
 
 const cronStatusColor: Record<string, string> = {
-  success: "bg-green-900/50 text-green-400",
-  failed: "bg-red-900/50 text-red-400",
-  running: "bg-yellow-900/50 text-yellow-400",
+  success: "bg-success/10 text-success",
+  failed: "bg-error/10 text-error",
+  running: "bg-warning/10 text-warning",
 };
 
 const publishStatusColor: Record<string, string> = {
-  pending: "bg-yellow-900/50 text-yellow-400",
-  published: "bg-green-900/50 text-green-400",
-  failed: "bg-red-900/50 text-red-400",
+  pending: "bg-warning/10 text-warning",
+  published: "bg-success/10 text-success",
+  failed: "bg-error/10 text-error",
 };
 
 export function AutomationPanel({
@@ -20,31 +20,30 @@ export function AutomationPanel({
   failedPublishing: PublishingRecord[];
 }) {
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      {/* Cron Runs */}
-      <div className="rounded-lg border border-slate-800 bg-slate-900">
-        <div className="border-b border-slate-800 px-4 py-3">
-          <h3 className="text-sm font-semibold text-white">
+    <div className="grid gap-4 md:grid-cols-2">
+      <div className="rounded-xl border border-border bg-surface">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="text-[13px] font-semibold text-foreground">
             Recent Automations
           </h3>
         </div>
-        <div className="p-2">
+        <div className="p-1.5">
           {cronRuns.length === 0 ? (
-            <p className="px-2 py-3 text-center text-xs text-slate-500">
+            <p className="py-4 text-center text-xs text-muted">
               No automation runs yet
             </p>
           ) : (
-            <ul className="space-y-0.5">
+            <ul>
               {cronRuns.map((run) => (
                 <li
                   key={run.id}
-                  className="flex items-center justify-between rounded-md px-3 py-2"
+                  className="flex items-center justify-between rounded-lg px-3 py-2"
                 >
-                  <span className="truncate text-sm text-slate-300">
+                  <span className="truncate text-[13px] text-muted">
                     {run.route}
                   </span>
                   <span
-                    className={`ml-2 shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    className={`ml-3 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${
                       cronStatusColor[run.status] ?? cronStatusColor.running
                     }`}
                   >
@@ -57,31 +56,27 @@ export function AutomationPanel({
         </div>
       </div>
 
-      {/* Failed Publishing */}
-      <div className="rounded-lg border border-slate-800 bg-slate-900">
-        <div className="border-b border-slate-800 px-4 py-3">
-          <h3 className="text-sm font-semibold text-white">
+      <div className="rounded-xl border border-border bg-surface">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="text-[13px] font-semibold text-foreground">
             Failed Publishing
           </h3>
         </div>
-        <div className="p-2">
+        <div className="p-1.5">
           {failedPublishing.length === 0 ? (
-            <p className="px-2 py-3 text-center text-xs text-slate-500">
-              No failures
-            </p>
+            <p className="py-4 text-center text-xs text-muted">No failures</p>
           ) : (
-            <ul className="space-y-0.5">
+            <ul>
               {failedPublishing.map((record) => (
                 <li
                   key={record.id}
-                  className="flex items-center justify-between rounded-md px-3 py-2"
+                  className="flex items-center justify-between rounded-lg px-3 py-2"
                 >
-                  <span className="truncate text-sm text-slate-300">
-                    {record.platform} &middot;{" "}
-                    {record.error ?? "Unknown error"}
+                  <span className="truncate text-[13px] text-muted">
+                    {record.platform} &middot; {record.error ?? "Unknown error"}
                   </span>
                   <span
-                    className={`ml-2 shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    className={`ml-3 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${
                       publishStatusColor[record.status] ??
                       publishStatusColor.failed
                     }`}

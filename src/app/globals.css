@@ -2,16 +2,29 @@
 
 @theme inline {
   --font-sans: var(--font-inter);
-  --color-background: #ffffff;
-  --color-foreground: #0f172a;
-  --color-muted: #64748b;
-  --color-border: #e2e8f0;
+
+  /* Base */
+  --color-background: #0f0f14;
+  --color-foreground: #e2e2e8;
+  --color-muted: #71717a;
+
+  /* Surfaces */
+  --color-surface: #17171d;
+  --color-surface-2: #1e1e26;
+
+  /* Borders */
+  --color-border: #252530;
+  --color-border-strong: #2d2d3a;
+
+  /* Accent */
   --color-accent: #f43f5e;
   --color-accent-hover: #e11d48;
-  --color-surface: #f8fafc;
+  --color-accent-subtle: color-mix(in srgb, #f43f5e 12%, transparent);
+
+  /* Semantic */
   --color-success: #10b981;
   --color-warning: #f59e0b;
-  --color-error: #ef4444;
+  --color-error: #f87171;
 }
 
 body {

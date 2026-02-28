@@ -28,7 +28,7 @@ const TONE_OPTIONS = [
 ];
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent";
+  "w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent";
 
 export function ProfileForm({ profile }: { profile: Profile | null }) {
   const [ctas, setCtas] = useState<string[]>(
@@ -92,7 +92,7 @@ export function ProfileForm({ profile }: { profile: Profile | null }) {
   return (
     <form action={handleSubmit} className="space-y-5">
       {error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+        <p className="rounded-lg bg-error/10 px-3 py-2 text-sm text-error">
           {error}
         </p>
       )}

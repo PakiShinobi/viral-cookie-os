@@ -17,8 +17,8 @@ export function WeekStrip({
     slotsByDate.set(slot.slot_date, existing);
   }
 
-  const days: { label: string; date: string; isToday: boolean }[] = [];
   const today = formatDate(new Date());
+  const days: { label: string; dayNum: number; date: string; isToday: boolean }[] = [];
 
   for (let i = 0; i < 7; i++) {
     const d = new Date(weekStart);
@@ -26,29 +26,39 @@ export function WeekStrip({
     const dateStr = formatDate(d);
     days.push({
       label: DAY_LABELS[i],
+      dayNum: d.getDate(),
       date: dateStr,
       isToday: dateStr === today,
     });
   }
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900">
-      <div className="border-b border-slate-800 px-4 py-3">
-        <h3 className="text-sm font-semibold text-white">This Week</h3>
+    <div className="rounded-xl border border-border bg-surface">
+      <div className="border-b border-border px-4 py-3">
+        <h3 className="text-[13px] font-semibold text-foreground">This Week</h3>
       </div>
-      <div className="grid grid-cols-7 divide-x divide-slate-800">
+      <div className="grid grid-cols-7 divide-x divide-border">
         {days.map((day) => {
           const daySlots = slotsByDate.get(day.date) ?? [];
           return (
-            <div key={day.date} className="min-h-[80px] p-2">
-              <p
-                className={`text-xs font-medium ${
-                  day.isToday ? "text-accent" : "text-slate-500"
-                }`}
-              >
-                {day.label}
-              </p>
-              <div className="mt-1.5 space-y-1">
+            <div key={day.date} className="min-h-[88px] p-2.5">
+              <div className="mb-2 flex flex-col items-start">
+                <span
+                  className={`text-[10px] font-medium uppercase tracking-wider ${
+                    day.isToday ? "text-accent" : "text-muted"
+                  }`}
+                >
+                  {day.label}
+                </span>
+                <span
+                  className={`text-[13px] font-semibold tabular-nums ${
+                    day.isToday ? "text-accent" : "text-foreground"
+                  }`}
+                >
+                  {day.dayNum}
+                </span>
+              </div>
+              <div className="space-y-1">
                 {daySlots.map((slot) => {
                   const title = slot.title_idea?.title ?? "Untitled";
                   const href = slot.content_id
@@ -58,7 +68,7 @@ export function WeekStrip({
                     <Link
                       key={slot.id}
                       href={href}
-                      className="block truncate rounded bg-slate-800 px-1.5 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                      className="block truncate rounded bg-surface-2 px-1.5 py-1 text-[11px] text-muted transition-colors hover:text-foreground"
                       title={title}
                     >
                       {title}

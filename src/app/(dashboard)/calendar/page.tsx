@@ -13,7 +13,6 @@ export default async function CalendarPage() {
     return null;
   }
 
-  // Current month boundaries
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -46,40 +45,37 @@ export default async function CalendarPage() {
 
   const slots = data ?? [];
 
+  const monthLabel = firstDay.toLocaleString("default", {
+    month: "long",
+    year: "numeric",
+  });
+
   return (
-    <div>
+    <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">
-          Content Calendar &mdash;{" "}
-          {firstDay.toLocaleString("default", {
-            month: "long",
-            year: "numeric",
-          })}
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          {monthLabel}
         </h1>
         <Link
           href="/titles"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-hover"
         >
-          + Generate Titles
+          Generate Titles
         </Link>
       </div>
 
       {slots.length === 0 ? (
-        <div className="mt-16 text-center">
-          <p className="text-muted">No scheduled content this month</p>
+        <div className="rounded-xl border border-border bg-surface py-16 text-center">
+          <p className="text-sm text-muted">No scheduled content this month</p>
           <Link
             href="/titles"
-            className="mt-4 inline-block text-sm font-medium text-accent hover:text-accent-hover"
+            className="mt-3 inline-block text-[13px] font-medium text-accent hover:text-accent-hover"
           >
             Generate titles and plan your calendar
           </Link>
         </div>
       ) : (
-        <CalendarGrid
-          slots={slots}
-          year={year}
-          month={month}
-        />
+        <CalendarGrid slots={slots} year={year} month={month} />
       )}
     </div>
   );
