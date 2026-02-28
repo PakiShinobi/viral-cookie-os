@@ -1,3 +1,3 @@
-export { createClient as createBrowserClient } from "./client";
-export { createClient as createServerClient } from "./server";
+export { createBrowserClient } from "./client";
+export { createServerClient } from "./server";
 export { createAdminClient } from "./admin";
