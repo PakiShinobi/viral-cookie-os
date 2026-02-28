@@ -1,6 +1,6 @@
 "use server";
 
-import { createServerClient } from "@/lib/supabase";
+import { createServerClient } from "@/lib/supabase/server";
 import type { Profile, TitleIdea, CalendarSlot } from "@/lib/types";
 import Anthropic from "@anthropic-ai/sdk";
 import { redirect } from "next/navigation";

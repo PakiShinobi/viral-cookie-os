@@ -1,6 +1,6 @@
 "use server";
 
-import { createServerClient } from "@/lib/supabase";
+import { createServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import type { WizardStep } from "@/lib/types";
 

@@ -1,6 +1,7 @@
 "use server";
 
-import { createServerClient, createAdminClient } from "@/lib/supabase";
+import { createServerClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 
 export async function createContent(formData: FormData) {

@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase";
+import { createAdminClient } from "@/lib/supabase/admin";
 import Anthropic from "@anthropic-ai/sdk";
 
 interface YouTubePlaylistItem {

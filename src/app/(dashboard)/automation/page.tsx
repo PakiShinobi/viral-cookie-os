@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { CronRun } from "@/lib/types";
 import Link from "next/link";
 

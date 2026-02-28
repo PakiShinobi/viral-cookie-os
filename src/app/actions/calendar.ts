@@ -1,6 +1,6 @@
 "use server";
 
-import { createServerClient } from "@/lib/supabase";
+import { createServerClient } from "@/lib/supabase/server";
 import type { CalendarSlot } from "@/lib/types";
 
 // ---------------------------------------------------------------------------

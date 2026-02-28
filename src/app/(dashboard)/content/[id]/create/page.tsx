@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { createServerClient } from "@/lib/supabase";
+import { createServerClient } from "@/lib/supabase/server";
 import { getWizardSession, createWizardSession } from "@/app/actions/wizard";
 import WizardLayout from "./wizard-layout";
 
