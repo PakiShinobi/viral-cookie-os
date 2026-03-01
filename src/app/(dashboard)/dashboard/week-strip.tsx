@@ -1,5 +1,6 @@
 import type { CalendarSlot } from "@/lib/types";
 import Link from "next/link";
+import { CardHeader } from "@/components/ui/card";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -34,9 +35,7 @@ export function WeekStrip({
 
   return (
     <div className="rounded-xl border border-border bg-surface">
-      <div className="border-b border-border px-4 py-3">
-        <h3 className="text-[13px] font-semibold text-foreground">This Week</h3>
-      </div>
+      <CardHeader title="This Week" />
       <div className="grid grid-cols-7 divide-x divide-border">
         {days.map((day) => {
           const daySlots = slotsByDate.get(day.date) ?? [];

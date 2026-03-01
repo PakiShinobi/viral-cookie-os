@@ -1,20 +1,18 @@
 "use server";
 
+// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import type { WizardStep } from "@/lib/types";
+
+const DEV_USER_ID = "dev-user";
 
 /* ===========================
    Create Wizard Session
 =========================== */
 export async function createWizardSession(contentId: string) {
   const supabase = await createServerClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Unauthorized" };
+  const user = { id: DEV_USER_ID };
 
   // Check if session already exists
   const { data: existing } = await supabase
@@ -46,12 +44,7 @@ export async function createWizardSession(contentId: string) {
 =========================== */
 export async function getWizardSession(contentId: string) {
   const supabase = await createServerClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
+  const user = { id: DEV_USER_ID };
 
   const { data } = await supabase
     .from("wizard_sessions")
@@ -68,12 +61,7 @@ export async function getWizardSession(contentId: string) {
 =========================== */
 export async function advanceWizardStep(contentId: string, nextStep: WizardStep) {
   const supabase = await createServerClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Unauthorized" };
+  const user = { id: DEV_USER_ID };
 
   const { error } = await supabase
     .from("wizard_sessions")
@@ -91,12 +79,7 @@ export async function advanceWizardStep(contentId: string, nextStep: WizardStep)
 =========================== */
 export async function completeWizard(contentId: string) {
   const supabase = await createServerClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Unauthorized" };
+  const user = { id: DEV_USER_ID };
 
   const { error } = await supabase
     .from("wizard_sessions")
@@ -117,12 +100,7 @@ export async function completeWizard(contentId: string) {
 =========================== */
 export async function updateContentTitle(contentId: string, title: string) {
   const supabase = await createServerClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Unauthorized" };
+  const user = { id: DEV_USER_ID };
 
   const { error } = await supabase
     .from("content")

@@ -1,17 +1,12 @@
+// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
+const DEV_USER_ID = "dev-user";
+
 export async function POST(req: Request) {
   const supabase = await createServerClient();
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const user = { id: DEV_USER_ID };
 
   let body: any;
 

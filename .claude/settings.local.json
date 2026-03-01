@@ -34,7 +34,10 @@
       "Bash(npx next build:*)",
       "Bash(git push:*)",
       "Bash(ls:*)",
-      "Bash(git -C /Users/ek/Apps/viral-cookie-os status src/app/\\\\\\(dashboard\\\\\\)/content/[id]/create/)"
+      "Bash(git -C /Users/ek/Apps/viral-cookie-os status src/app/\\\\\\(dashboard\\\\\\)/content/[id]/create/)",
+      "Bash(npx remotion:*)",
+      "Bash(bun run:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

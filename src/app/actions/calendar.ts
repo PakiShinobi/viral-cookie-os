@@ -1,7 +1,10 @@
 "use server";
 
+// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import type { CalendarSlot } from "@/lib/types";
+
+const DEV_USER_ID = "dev-user";
 
 // ---------------------------------------------------------------------------
 // getCalendarRange – fetches slots with joined title_ideas for a date range
@@ -12,13 +15,7 @@ export async function getCalendarRange(input: {
   endDate: string;
 }): Promise<{ slots: CalendarSlot[] } | { error: string }> {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Not authenticated" };
-  }
+  const user = { id: DEV_USER_ID };
 
   const { data, error } = await supabase
     .from("calendar_slots")
@@ -56,13 +53,7 @@ export async function promoteSlotToContent(
   slotId: string,
 ): Promise<{ contentId: string } | { error: string }> {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Not authenticated" };
-  }
+  const user = { id: DEV_USER_ID };
 
   // Fetch the slot
   const { data: slot, error: slotError } = await supabase

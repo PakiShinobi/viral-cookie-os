@@ -1,9 +1,12 @@
 "use server";
 
+// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import type { Profile, TitleIdea, CalendarSlot } from "@/lib/types";
 import Anthropic from "@anthropic-ai/sdk";
 import { redirect } from "next/navigation";
+
+const DEV_USER_ID = "dev-user";
 
 // ---------------------------------------------------------------------------
 // generateTitles – calls Anthropic to produce title ideas
@@ -20,13 +23,7 @@ export async function generateTitles(input: {
   }
 
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Not authenticated" };
-  }
+  const user = { id: DEV_USER_ID };
 
   const { data: profile } = await supabase
     .from("profile")
@@ -125,13 +122,7 @@ export async function createTitleIdeas(input: {
   target_duration_minutes: number | null;
 }): Promise<{ ideas: TitleIdea[] } | { error: string }> {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Not authenticated" };
-  }
+  const user = { id: DEV_USER_ID };
 
   const rows = input.titles.map((title) => ({
     user_id: user.id,
@@ -163,13 +154,7 @@ export async function planCalendar(input: {
   titleIdeaIds: string[];
 }): Promise<{ slots: CalendarSlot[] } | { error: string }> {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Not authenticated" };
-  }
+  const user = { id: DEV_USER_ID };
 
   // Generate deterministic slot dates
   const slotDates = computeSlotDates(

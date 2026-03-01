@@ -1,4 +1,5 @@
 import type { CronRun, PublishingRecord } from "@/lib/types";
+import { CardHeader } from "@/components/ui/card";
 
 const cronStatusColor: Record<string, string> = {
   success: "bg-success/10 text-success",
@@ -22,11 +23,7 @@ export function AutomationPanel({
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div className="rounded-xl border border-border bg-surface">
-        <div className="border-b border-border px-4 py-3">
-          <h3 className="text-[13px] font-semibold text-foreground">
-            Recent Automations
-          </h3>
-        </div>
+        <CardHeader title="Recent Automations" />
         <div className="p-1.5">
           {cronRuns.length === 0 ? (
             <p className="py-4 text-center text-xs text-muted">
@@ -57,11 +54,7 @@ export function AutomationPanel({
       </div>
 
       <div className="rounded-xl border border-border bg-surface">
-        <div className="border-b border-border px-4 py-3">
-          <h3 className="text-[13px] font-semibold text-foreground">
-            Failed Publishing
-          </h3>
-        </div>
+        <CardHeader title="Failed Publishing" />
         <div className="p-1.5">
           {failedPublishing.length === 0 ? (
             <p className="py-4 text-center text-xs text-muted">No failures</p>

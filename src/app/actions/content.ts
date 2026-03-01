@@ -1,18 +1,15 @@
 "use server";
 
+// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 
+const DEV_USER_ID = "dev-user";
+
 export async function createContent(formData: FormData) {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  const user = { id: DEV_USER_ID };
 
   const title = formData.get("title") as string;
   const niche = formData.get("niche") as string;
@@ -46,13 +43,7 @@ export async function updateContentScript(
   },
 ) {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
+  const user = { id: DEV_USER_ID };
 
   const { error: updateError } = await supabase
     .from("content")

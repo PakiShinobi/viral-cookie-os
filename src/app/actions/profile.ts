@@ -1,16 +1,15 @@
 "use server";
 
+// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
 import { redirect } from "next/navigation";
 
+const DEV_USER_ID = "dev-user";
+
 export async function getProfile(): Promise<Profile | null> {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
+  const user = { id: DEV_USER_ID };
 
   const { data } = await supabase
     .from("profile")
@@ -23,13 +22,7 @@ export async function getProfile(): Promise<Profile | null> {
 
 export async function upsertProfile(formData: FormData) {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  const user = { id: DEV_USER_ID };
 
   const niche = (formData.get("niche") as string)?.trim() ?? "";
   const channelGoal = (formData.get("channel_goal") as string)?.trim() ?? "";
