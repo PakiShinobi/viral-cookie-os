@@ -3,9 +3,17 @@
 import { useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 const inputClass =
   "w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-foreground placeholder:text-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent";
+
+// NEXT_PUBLIC vars are inlined at build time — safe to read at module level.
+const isAuthBypassed =
+  process.env.NEXT_PUBLIC_AUTH_DISABLED === "true" ||
+  process.env.NEXT_PUBLIC_AUTH_DISABLED === "1" ||
+  process.env.NEXT_PUBLIC_AUTH_DISABLED === "yes" ||
+  process.env.NEXT_PUBLIC_AUTH_DISABLED === "on";
 
 export default function LoginPage() {
   const supabase = createBrowserClient();
@@ -68,6 +76,21 @@ export default function LoginPage() {
             Viral Cookie OS
           </span>
         </div>
+
+        {/* Auth bypass banner */}
+        {isAuthBypassed && (
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+            <span className="text-[12px] text-amber-600 dark:text-amber-400">
+              Auth bypass enabled
+            </span>
+            <Link
+              href="/dashboard"
+              className="text-[12px] font-medium text-amber-600 underline underline-offset-2 hover:text-amber-500 dark:text-amber-400"
+            >
+              Go to dashboard →
+            </Link>
+          </div>
+        )}
 
         <div className="rounded-xl border border-border bg-surface p-7">
           <h1 className="mb-1 text-[17px] font-semibold text-foreground">

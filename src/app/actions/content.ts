@@ -1,15 +1,29 @@
 "use server";
 
-// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  isAuthDisabled,
+  getMockUser,
+  assertAuthWritesAllowed,
+} from "@/lib/auth/auth-bypass";
 import { redirect } from "next/navigation";
 
-const DEV_USER_ID = "dev-user";
-
 export async function createContent(formData: FormData) {
+  assertAuthWritesAllowed();
+
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
+    userId = user.id;
+  }
 
   const title = formData.get("title") as string;
   const niche = formData.get("niche") as string;
@@ -18,7 +32,7 @@ export async function createContent(formData: FormData) {
   const { data, error } = await supabase
     .from("content")
     .insert({
-      user_id: user.id,
+      user_id: userId,
       title,
       tags: niche ? [niche] : [],
       brief: notes || null,
@@ -42,8 +56,20 @@ export async function updateContentScript(
     output_tokens: number;
   },
 ) {
+  assertAuthWritesAllowed();
+
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+    userId = user.id;
+  }
 
   const { error: updateError } = await supabase
     .from("content")
@@ -59,7 +85,7 @@ export async function updateContentScript(
   const admin = createAdminClient();
   await admin.from("ai_generation_logs").insert({
     content_id: contentId,
-    user_id: user.id,
+    user_id: userId,
     operation: "generate_script",
     model: logData.model,
     input_tokens: logData.input_tokens,
@@ -69,6 +95,8 @@ export async function updateContentScript(
 }
 
 export async function deleteContent(contentId: string) {
+  assertAuthWritesAllowed();
+
   const supabase = await createServerClient();
 
   const { error } = await supabase

@@ -1,12 +1,35 @@
-// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-
-const DEV_USER_ID = "dev-user";
+import {
+  isAuthDisabled,
+  getMockUser,
+  assertAuthWritesAllowed,
+} from "@/lib/auth/auth-bypass";
 
 export async function POST(req: Request) {
+  // Block writes in bypass mode unless AUTH_BYPASS_ALLOW_WRITES=true.
+  try {
+    assertAuthWritesAllowed();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 403 });
+  }
+
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    userId = user.id;
+  }
 
   let body: any;
 
@@ -90,7 +113,7 @@ High CTR, bold, readable text, strong contrast.
 
   const imageBuffer = Buffer.from(result.image_base64, "base64");
 
-  const storagePath = `${user.id}/${contentId}/v1.png`;
+  const storagePath = `${userId}/${contentId}/v1.png`;
 
   const { error: uploadError } = await supabase.storage
     .from("thumbnails")
@@ -108,7 +131,7 @@ High CTR, bold, readable text, strong contrast.
 
   const { error: insertError } = await supabase.from("thumbnails").insert({
     content_id: contentId,
-    user_id: user.id,
+    user_id: userId,
     version: 1,
     is_primary: true,
     storage_path: storagePath,

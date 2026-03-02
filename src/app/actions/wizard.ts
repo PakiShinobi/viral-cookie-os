@@ -1,18 +1,32 @@
 "use server";
 
-// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import type { WizardStep } from "@/lib/types";
-
-const DEV_USER_ID = "dev-user";
+import {
+  isAuthDisabled,
+  getMockUser,
+  assertAuthWritesAllowed,
+} from "@/lib/auth/auth-bypass";
 
 /* ===========================
    Create Wizard Session
 =========================== */
 export async function createWizardSession(contentId: string) {
+  assertAuthWritesAllowed();
+
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Unauthorized" };
+    userId = user.id;
+  }
 
   // Check if session already exists
   const { data: existing } = await supabase
@@ -26,7 +40,7 @@ export async function createWizardSession(contentId: string) {
   const { data, error } = await supabase
     .from("wizard_sessions")
     .insert({
-      user_id: user.id,
+      user_id: userId,
       content_id: contentId,
       current_step: "title",
       status: "in_progress",
@@ -44,13 +58,23 @@ export async function createWizardSession(contentId: string) {
 =========================== */
 export async function getWizardSession(contentId: string) {
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
+    userId = user.id;
+  }
 
   const { data } = await supabase
     .from("wizard_sessions")
     .select("*")
     .eq("content_id", contentId)
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .maybeSingle();
 
   return data;
@@ -60,14 +84,26 @@ export async function getWizardSession(contentId: string) {
    Advance Wizard Step
 =========================== */
 export async function advanceWizardStep(contentId: string, nextStep: WizardStep) {
+  assertAuthWritesAllowed();
+
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Unauthorized" };
+    userId = user.id;
+  }
 
   const { error } = await supabase
     .from("wizard_sessions")
     .update({ current_step: nextStep })
     .eq("content_id", contentId)
-    .eq("user_id", user.id);
+    .eq("user_id", userId);
 
   if (error) return { error: error.message };
 
@@ -78,8 +114,20 @@ export async function advanceWizardStep(contentId: string, nextStep: WizardStep)
    Complete Wizard
 =========================== */
 export async function completeWizard(contentId: string) {
+  assertAuthWritesAllowed();
+
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Unauthorized" };
+    userId = user.id;
+  }
 
   const { error } = await supabase
     .from("wizard_sessions")
@@ -88,7 +136,7 @@ export async function completeWizard(contentId: string) {
       current_step: "complete",
     })
     .eq("content_id", contentId)
-    .eq("user_id", user.id);
+    .eq("user_id", userId);
 
   if (error) return { error: error.message };
 
@@ -99,14 +147,26 @@ export async function completeWizard(contentId: string) {
    Update Content Title
 =========================== */
 export async function updateContentTitle(contentId: string, title: string) {
+  assertAuthWritesAllowed();
+
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Unauthorized" };
+    userId = user.id;
+  }
 
   const { error } = await supabase
     .from("content")
     .update({ title })
     .eq("id", contentId)
-    .eq("user_id", user.id);
+    .eq("user_id", userId);
 
   if (error) return { error: error.message };
 

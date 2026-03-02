@@ -1,28 +1,52 @@
 "use server";
 
-// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
+import {
+  isAuthDisabled,
+  getMockUser,
+  assertAuthWritesAllowed,
+} from "@/lib/auth/auth-bypass";
 import { redirect } from "next/navigation";
-
-const DEV_USER_ID = "dev-user";
 
 export async function getProfile(): Promise<Profile | null> {
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
+    userId = user.id;
+  }
 
   const { data } = await supabase
     .from("profile")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .maybeSingle<Profile>();
 
   return data;
 }
 
 export async function upsertProfile(formData: FormData) {
+  assertAuthWritesAllowed();
+
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
+    userId = user.id;
+  }
 
   const niche = (formData.get("niche") as string)?.trim() ?? "";
   const channelGoal = (formData.get("channel_goal") as string)?.trim() ?? "";
@@ -39,7 +63,7 @@ export async function upsertProfile(formData: FormData) {
   }
 
   const profileData = {
-    user_id: user.id,
+    user_id: userId,
     youtube_channel_url:
       (formData.get("youtube_channel_url") as string)?.trim() || null,
     youtube_channel_id:

@@ -1,12 +1,15 @@
 "use server";
 
-// DEV MODE: auth bypassed — user hardcoded
 import { createServerClient } from "@/lib/supabase/server";
 import type { Profile, TitleIdea, CalendarSlot } from "@/lib/types";
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  isAuthDisabled,
+  getMockUser,
+  getMockProfile,
+  assertAuthWritesAllowed,
+} from "@/lib/auth/auth-bypass";
 import { redirect } from "next/navigation";
-
-const DEV_USER_ID = "dev-user";
 
 // ---------------------------------------------------------------------------
 // generateTitles – calls Anthropic to produce title ideas
@@ -23,13 +26,26 @@ export async function generateTitles(input: {
   }
 
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+  let profile: Pick<Profile, "niche" | "channel_goal" | "tone" | "audience"> | null;
 
-  const { data: profile } = await supabase
-    .from("profile")
-    .select("niche, channel_goal, tone, audience")
-    .eq("user_id", user.id)
-    .single<Pick<Profile, "niche" | "channel_goal" | "tone" | "audience">>();
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+    profile = getMockProfile();
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
+    userId = user.id;
+
+    const { data } = await supabase
+      .from("profile")
+      .select("niche, channel_goal, tone, audience")
+      .eq("user_id", userId)
+      .single<Pick<Profile, "niche" | "channel_goal" | "tone" | "audience">>();
+    profile = data;
+  }
 
   if (!profile) {
     return { error: "Profile not found. Complete onboarding first." };
@@ -121,11 +137,23 @@ export async function createTitleIdeas(input: {
   video_style: string;
   target_duration_minutes: number | null;
 }): Promise<{ ideas: TitleIdea[] } | { error: string }> {
+  assertAuthWritesAllowed();
+
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
+    userId = user.id;
+  }
 
   const rows = input.titles.map((title) => ({
-    user_id: user.id,
+    user_id: userId,
     title,
     video_style: input.video_style,
     target_duration_minutes: input.target_duration_minutes,
@@ -153,8 +181,20 @@ export async function planCalendar(input: {
   plan_months: number;
   titleIdeaIds: string[];
 }): Promise<{ slots: CalendarSlot[] } | { error: string }> {
+  assertAuthWritesAllowed();
+
   const supabase = await createServerClient();
-  const user = { id: DEV_USER_ID };
+  let userId: string;
+
+  if (isAuthDisabled()) {
+    userId = getMockUser().id;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
+    userId = user.id;
+  }
 
   // Generate deterministic slot dates
   const slotDates = computeSlotDates(
@@ -164,7 +204,7 @@ export async function planCalendar(input: {
 
   // Build slot rows — assign title ideas in order, remaining slots stay empty
   const rows = slotDates.map((date, i) => ({
-    user_id: user.id,
+    user_id: userId,
     slot_date: date,
     title_idea_id: i < input.titleIdeaIds.length ? input.titleIdeaIds[i] : null,
   }));
