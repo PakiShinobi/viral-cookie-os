@@ -7,14 +7,38 @@ import type { PodcastProject } from "./types";
 /**
  * Reactive views over the podcast project store.
  *
- * Backed by useSyncExternalStore so React stays in sync with localStorage
+ * Backed by `useSyncExternalStore` so React stays in sync with localStorage
  * mutations (including cross-tab `storage` events) without tripping the
- * react-hooks/set-state-in-effect lint rule.
+ * `react-hooks/set-state-in-effect` lint rule.
  *
- * Snapshots are cached and only swap when the underlying JSON changes —
- * useSyncExternalStore requires referentially-stable values when the store
- * hasn't changed, otherwise it re-renders on every read.
+ * Snapshot stability rules — re-reading these is cheap, but React requires:
+ *   1. The same reference when the underlying store hasn't changed.
+ *   2. The SAME reference for the server snapshot across renders, otherwise
+ *      "The result of getServerSnapshot should be cached to avoid an
+ *      infinite loop" fires.
+ *
+ * We therefore:
+ *   - Compare a JSON key after each read to short-circuit identical results.
+ *   - Hand out frozen, module-level constants for server snapshots.
  */
+
+/* ===============================
+   Server (SSR) snapshots — frozen, shared, never re-allocated.
+================================ */
+
+const EMPTY_PROJECTS: readonly PodcastProject[] = Object.freeze([]);
+
+function getServerProjectsSnapshot(): PodcastProject[] {
+  return EMPTY_PROJECTS as PodcastProject[];
+}
+
+function getServerProjectSnapshot(): PodcastProject | null {
+  return null;
+}
+
+/* ===============================
+   Client snapshots — cached by structural key.
+================================ */
 
 let projectsSnapshotKey = "";
 let projectsSnapshot: PodcastProject[] = [];
@@ -29,10 +53,6 @@ function getProjectsSnapshot(): PodcastProject[] {
   return projectsSnapshot;
 }
 
-function getServerProjectsSnapshot(): PodcastProject[] {
-  return [];
-}
-
 const projectSnapshotCache = new Map<
   string,
   { key: string; value: PodcastProject | null }
@@ -45,23 +65,17 @@ function getProjectSnapshotFor(id: string): PodcastProject | null {
   if (cached && cached.key === key) {
     return cached.value;
   }
-  const next = { key, value: fresh };
-  projectSnapshotCache.set(id, next);
+  projectSnapshotCache.set(id, { key, value: fresh });
   return fresh;
 }
 
-function getServerProjectSnapshot(): PodcastProject | null {
-  return null;
-}
+/* ===============================
+   useMounted — client-side hydration flag.
+================================ */
 
-/**
- * Mount-aware boolean. Drives skeleton/loading states without resorting to
- * setState-in-useEffect. The first SSR render returns false; the first
- * client render also returns false (matching SSR for hydration safety),
- * and the next subscription tick flips to true.
- */
 let isMounted = false;
 const mountListeners = new Set<() => void>();
+
 function subscribeMount(cb: () => void): () => void {
   mountListeners.add(cb);
   if (!isMounted) {
@@ -74,9 +88,11 @@ function subscribeMount(cb: () => void): () => void {
     mountListeners.delete(cb);
   };
 }
+
 function getMountSnapshot(): boolean {
   return isMounted;
 }
+
 function getServerMountSnapshot(): boolean {
   return false;
 }
@@ -88,6 +104,10 @@ export function useMounted(): boolean {
     getServerMountSnapshot,
   );
 }
+
+/* ===============================
+   Hooks.
+================================ */
 
 export function useProjects(): {
   projects: PodcastProject[];
@@ -102,13 +122,29 @@ export function useProjects(): {
   return { projects, ready };
 }
 
+// Per-id snapshot getters need to be stable across renders so React doesn't
+// see them as a "new store". We memoise them by id.
+const projectSnapshotGetters = new Map<string, () => PodcastProject | null>();
+
+function getProjectSnapshotGetter(id: string): () => PodcastProject | null {
+  let fn = projectSnapshotGetters.get(id);
+  if (!fn) {
+    fn = () => getProjectSnapshotFor(id);
+    projectSnapshotGetters.set(id, fn);
+  }
+  return fn;
+}
+
+const NULL_GETTER: () => PodcastProject | null = () => null;
+
 export function useProject(id: string | null | undefined): {
   project: PodcastProject | null;
   ready: boolean;
 } {
+  const getSnapshot = id ? getProjectSnapshotGetter(id) : NULL_GETTER;
   const project = useSyncExternalStore(
     subscribe,
-    () => (id ? getProjectSnapshotFor(id) : null),
+    getSnapshot,
     getServerProjectSnapshot,
   );
   const ready = useMounted();

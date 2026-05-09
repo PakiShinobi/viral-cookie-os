@@ -70,6 +70,7 @@ export function createProject(
     editor: null,
     pipeline: buildInitialPipeline(),
     clipSuggestions: [],
+    syncRecords: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -379,6 +380,8 @@ export interface BinItemServerInfo {
   fileSize: number;
   mimeType: string;
   probe: BinItemProbeSummary | null;
+  /** Async post-import processing (audio extraction + waveform). */
+  processingJobId: string | null;
 }
 
 /**
@@ -427,6 +430,14 @@ export function addBinItem(
     previewUrl: info.previewUrl,
     thumbnailUrl: info.thumbnailUrl,
     probe: info.probe,
+    audioReady: false,
+    audioUrl: null,
+    waveformReady: false,
+    waveformUrl: null,
+    waveform: null,
+    processingJobId: info.processingJobId,
+    processingState: info.processingJobId ? "queued" : "idle",
+    processingError: null,
   };
 
   const editor = project.editor && displacedIds.length
@@ -446,6 +457,28 @@ export function addBinItem(
     editor,
   });
   return { project: saveProject(next), item };
+}
+
+/**
+ * Mutate a single bin item in-place. Used by post-import polling to
+ * commit the result of background audio extraction + waveform jobs.
+ *
+ * Patch is a partial of `MediaBinItem`; null-fields explicitly clear.
+ * Returns the updated project, or null if either the project or item
+ * disappeared while the caller was working.
+ */
+export function patchBinItem(
+  id: string,
+  itemId: string,
+  patch: Partial<MediaBinItem>,
+): PodcastProject | null {
+  const project = getProject(id);
+  if (!project) return null;
+  const idx = project.mediaBin.findIndex((b) => b.id === itemId);
+  if (idx === -1) return null;
+  const next = [...project.mediaBin];
+  next[idx] = { ...next[idx], ...patch };
+  return saveProject({ ...project, mediaBin: next });
 }
 
 export function removeBinItem(
@@ -482,6 +515,40 @@ export function saveEditorDoc(
   const project = getProject(id);
   if (!project) return null;
   return saveProject({ ...project, editor: doc });
+}
+
+/**
+ * Upsert a sync record onto the project (matched by referenceItemId +
+ * candidateItemId, regardless of which order the user queued them).
+ */
+export function upsertSyncRecord(
+  id: string,
+  record: import("./types").ProjectSyncRecord,
+): PodcastProject | null {
+  const project = getProject(id);
+  if (!project) return null;
+  const matches = (r: import("./types").ProjectSyncRecord) =>
+    (r.referenceItemId === record.referenceItemId &&
+      r.candidateItemId === record.candidateItemId) ||
+    (r.referenceItemId === record.candidateItemId &&
+      r.candidateItemId === record.referenceItemId);
+  const filtered = project.syncRecords.filter((r) => !matches(r));
+  return saveProject({
+    ...project,
+    syncRecords: [...filtered, record],
+  });
+}
+
+export function removeSyncRecord(
+  id: string,
+  recordId: string,
+): PodcastProject | null {
+  const project = getProject(id);
+  if (!project) return null;
+  return saveProject({
+    ...project,
+    syncRecords: project.syncRecords.filter((r) => r.id !== recordId),
+  });
 }
 
 export function updateProjectTitle(

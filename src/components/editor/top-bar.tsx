@@ -1,6 +1,10 @@
 "use client";
 
-import { useEditorDoc, useEditorStore } from "@/lib/editor/use-editor";
+import {
+  useEditorDoc,
+  useEditorPlayback,
+  useEditorStore,
+} from "@/lib/editor/use-editor";
 import { formatPlayheadTime } from "@/lib/editor/timeline-math";
 import { updateProjectTitle } from "@/lib/podcast/services";
 import type { PodcastProject } from "@/lib/podcast/types";
@@ -84,6 +88,8 @@ export function TopBar({ project }: { project: PodcastProject }) {
 
       {/* Transport */}
       <div className="hidden items-center gap-1 rounded-lg border border-border bg-surface-2 px-1.5 py-1 md:flex">
+        <PlayPauseButton />
+        <span className="mx-1 h-5 w-px bg-border" />
         <TransportButton
           label="Mark in"
           shortcut="I"
@@ -158,6 +164,38 @@ export function TopBar({ project }: { project: PodcastProject }) {
     </header>
   );
 }
+
+function PlayPauseButton() {
+  const store = useEditorStore();
+  const isPlaying = useEditorPlayback();
+  return (
+    <button
+      type="button"
+      onClick={() => store.togglePlay()}
+      title={`${isPlaying ? "Pause" : "Play"} (Space)`}
+      className={`flex h-7 w-9 items-center justify-center rounded-md transition-colors ${
+        isPlaying
+          ? "bg-accent text-white"
+          : "text-foreground hover:bg-surface"
+      }`}
+    >
+      {isPlaying ? <PauseIcon /> : <PlayIcon />}
+    </button>
+  );
+}
+
+const PlayIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+    <path d="M3 2L10 6L3 10V2Z" fill="currentColor" />
+  </svg>
+);
+
+const PauseIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+    <rect x="2.5" y="2" width="2.6" height="8" rx="0.5" fill="currentColor" />
+    <rect x="6.9" y="2" width="2.6" height="8" rx="0.5" fill="currentColor" />
+  </svg>
+);
 
 function TransportButton({
   label,

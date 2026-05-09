@@ -2,6 +2,11 @@
 
 import { ProjectCard } from "@/components/podcast/project-card";
 import { EmptyProjects } from "@/components/podcast/empty-projects";
+import {
+  getProjectClips,
+  getProjectMediaBin,
+  getProjectViralClips,
+} from "@/lib/podcast/migrate";
 import { countImportedMedia } from "@/lib/podcast/pipeline";
 import { useProjects } from "@/lib/podcast/use-podcast";
 import Link from "next/link";
@@ -24,15 +29,15 @@ export function PodcastHubClient() {
 
   const totalProjects = projects.length;
   const totalSources = projects.reduce(
-    (sum, p) => sum + (p.mediaBin.length || countImportedMedia(p.media)),
+    (sum, p) => sum + (getProjectMediaBin(p).length || countImportedMedia(p.media)),
     0,
   );
   const totalClips = projects.reduce(
-    (sum, p) => sum + (p.editor?.clips.length ?? 0),
+    (sum, p) => sum + getProjectClips(p).length,
     0,
   );
   const totalReels = projects.reduce(
-    (sum, p) => sum + (p.editor?.viralClips.length ?? 0),
+    (sum, p) => sum + getProjectViralClips(p).length,
     0,
   );
 

@@ -63,6 +63,7 @@ export function TimelineTrack({
           zoom={doc.zoom}
           selected={doc.selection.includes(clip.id)}
           mediaBin={project.mediaBin}
+          projectId={project.id}
         />
       ))}
 

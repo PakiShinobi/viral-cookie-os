@@ -6,7 +6,12 @@
  * cancellation.
  */
 
-import type { MediaImportResult } from "./types";
+import type {
+  MediaImportResult,
+  MediaJob,
+  SyncRecord,
+  WaveformData,
+} from "./types";
 
 export interface UploadProgress {
   phase: "uploading" | "processing";
@@ -111,4 +116,109 @@ export function uploadMedia(
     form.append("file", opts.file, opts.file.name);
     xhr.send(form);
   });
+}
+
+/* ===============================
+   Job polling + sync
+================================ */
+
+export async function fetchJob(jobId: string): Promise<MediaJob | null> {
+  const res = await fetch(`/api/media/jobs/${encodeURIComponent(jobId)}`, {
+    cache: "no-store",
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Job fetch failed (${res.status})`);
+  return (await res.json()) as MediaJob;
+}
+
+export interface PollJobOptions {
+  intervalMs?: number;
+  /** Stop after this long. Default 10 minutes. */
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  /** Per-tick callback for progress UIs. */
+  onTick?: (job: MediaJob) => void;
+}
+
+/**
+ * Poll a job until it terminates (succeeded / failed). Returns the
+ * final job snapshot. Throws on timeout, abort, or HTTP failures.
+ */
+export async function pollJob(
+  jobId: string,
+  opts: PollJobOptions = {},
+): Promise<MediaJob> {
+  const intervalMs = opts.intervalMs ?? 600;
+  const timeoutMs = opts.timeoutMs ?? 10 * 60_000;
+  const started = Date.now();
+
+  while (true) {
+    if (opts.signal?.aborted) throw new Error("Poll aborted");
+    const job = await fetchJob(jobId);
+    if (!job) throw new Error("Job not found");
+    opts.onTick?.(job);
+    if (job.status === "succeeded" || job.status === "failed") return job;
+    if (Date.now() - started > timeoutMs) throw new Error("Poll timed out");
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+export async function fetchWaveform(
+  projectId: string,
+  itemId: string,
+): Promise<WaveformData | null> {
+  const url = `/api/media/waveform/${encodeURIComponent(projectId)}/${encodeURIComponent(itemId)}`;
+  const res = await fetch(url, { cache: "force-cache" });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Waveform fetch failed (${res.status})`);
+  return (await res.json()) as WaveformData;
+}
+
+export interface RunSyncRequest {
+  projectId: string;
+  referenceItemId: string;
+  candidateItemId: string;
+  searchWindowSec?: number;
+  signal?: AbortSignal;
+}
+
+export async function runSync(req: RunSyncRequest): Promise<SyncRecord> {
+  const res = await fetch("/api/media/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectId: req.projectId,
+      referenceItemId: req.referenceItemId,
+      candidateItemId: req.candidateItemId,
+      searchWindowSec: req.searchWindowSec,
+    }),
+    signal: req.signal,
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(
+      (body as { error?: string }).error ?? `Sync failed (${res.status})`,
+    );
+  }
+  return (await res.json()) as SyncRecord;
+}
+
+export async function triggerProcessing(
+  projectId: string,
+  itemId: string,
+  kind: "video" | "audio" = "video",
+): Promise<{ jobId: string }> {
+  const res = await fetch(
+    `/api/media/process/${encodeURIComponent(projectId)}/${encodeURIComponent(itemId)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Process trigger failed (${res.status})`);
+  }
+  return (await res.json()) as { jobId: string };
 }

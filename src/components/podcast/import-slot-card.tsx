@@ -1,7 +1,15 @@
 "use client";
 
-import { addBinItem, removeBinItem } from "@/lib/podcast/services";
-import { uploadMedia, type UploadProgress } from "@/lib/media/client";
+import {
+  addBinItem,
+  patchBinItem,
+  removeBinItem,
+} from "@/lib/podcast/services";
+import {
+  pollJob,
+  uploadMedia,
+  type UploadProgress,
+} from "@/lib/media/client";
 import { formatBytes, formatDuration } from "@/lib/podcast/format";
 import type {
   MediaBinItem,
@@ -95,6 +103,10 @@ export function ImportSlotCard({ project, slotMeta }: ImportSlotCardProps) {
       addBinItem(project.id, result, slotMeta.trackType, {
         slotHint: slotMeta.slot,
       });
+      if (result.processingJobId) {
+        // Don't await — let the user keep working while processing runs.
+        void watchProcessingJob(project.id, result.itemId, result.processingJobId);
+      }
     } catch (err) {
       const e = err as Error;
       if (e.name !== "AbortError") setError(e.message || "Upload failed");
@@ -199,6 +211,69 @@ export function ImportSlotCard({ project, slotMeta }: ImportSlotCardProps) {
       />
     </label>
   );
+}
+
+/**
+ * Poll the post-import processing job. When it succeeds, patch the bin
+ * item with the resolved audio + waveform metadata so downstream
+ * components (timeline waveform render, sync analysis) can use it.
+ *
+ * Errors are written onto the bin item rather than thrown so the slot
+ * card can surface a friendly retry path later.
+ */
+async function watchProcessingJob(
+  projectId: string,
+  itemId: string,
+  jobId: string,
+): Promise<void> {
+  try {
+    const job = await pollJob(jobId, {
+      onTick: (j) => {
+        if (j.status !== "running") return;
+        // Translate progress thresholds back into UI-readable states.
+        const state =
+          j.progress < 0.5 ? "extracting_audio" : "waveform";
+        patchBinItem(projectId, itemId, {
+          processingState: state,
+        });
+      },
+    });
+    if (job.status === "succeeded") {
+      const r = (job.result ?? {}) as {
+        audioReady?: boolean;
+        audioUrl?: string | null;
+        waveformReady?: boolean;
+        waveformUrl?: string | null;
+        waveform?: {
+          peaksPerSecond: number;
+          peakCount: number;
+          durationSec: number;
+        } | null;
+      };
+      patchBinItem(projectId, itemId, {
+        audioReady: !!r.audioReady,
+        audioUrl: r.audioUrl ?? null,
+        waveformReady: !!r.waveformReady,
+        waveformUrl: r.waveformUrl ?? null,
+        waveform: r.waveform ?? null,
+        processingJobId: null,
+        processingState: r.waveformReady && r.audioReady ? "ready" : "failed",
+        processingError: r.waveformReady && r.audioReady ? null : "Processing incomplete",
+      });
+    } else {
+      patchBinItem(projectId, itemId, {
+        processingJobId: null,
+        processingState: "failed",
+        processingError: job.error ?? "Processing failed",
+      });
+    }
+  } catch (e) {
+    patchBinItem(projectId, itemId, {
+      processingJobId: null,
+      processingState: "failed",
+      processingError: (e as Error).message,
+    });
+  }
 }
 
 function FilledSlot({

@@ -14,6 +14,9 @@ import { pipeline } from "node:stream/promises";
  *       <itemId>/
  *         source.<ext>     -- the imported source file (verbatim bytes)
  *         thumb.jpg        -- 1280-wide preview frame (videos only)
+ *         audio.wav        -- extracted PCM s16le mono/stereo audio
+ *         audio.json       -- canonical extracted-audio metadata
+ *         peaks.json       -- compact waveform peaks payload
  *         probe.json       -- raw ffprobe output for this source
  *         meta.json        -- normalised metadata snapshot
  *
@@ -113,6 +116,46 @@ export async function findThumbnail(
   }
 }
 
+export function audioFilePath(projectId: string, itemId: string): string {
+  return path.join(itemDir(projectId, itemId), "audio.wav");
+}
+
+export function audioMetaPath(projectId: string, itemId: string): string {
+  return path.join(itemDir(projectId, itemId), "audio.json");
+}
+
+export function peaksFilePath(projectId: string, itemId: string): string {
+  return path.join(itemDir(projectId, itemId), "peaks.json");
+}
+
+export async function findExtractedAudio(
+  projectId: string,
+  itemId: string,
+): Promise<{ path: string; size: number } | null> {
+  const full = audioFilePath(projectId, itemId);
+  try {
+    const stat = await fs.stat(full);
+    if (!stat.isFile()) return null;
+    return { path: full, size: stat.size };
+  } catch {
+    return null;
+  }
+}
+
+export async function findPeaksFile(
+  projectId: string,
+  itemId: string,
+): Promise<{ path: string; size: number } | null> {
+  const full = peaksFilePath(projectId, itemId);
+  try {
+    const stat = await fs.stat(full);
+    if (!stat.isFile()) return null;
+    return { path: full, size: stat.size };
+  } catch {
+    return null;
+  }
+}
+
 export async function writeProbeFile(
   projectId: string,
   itemId: string,
@@ -147,6 +190,16 @@ export function previewUrl(projectId: string, itemId: string): string {
 /** Public thumbnail URL. */
 export function thumbnailUrl(projectId: string, itemId: string): string {
   return `/api/media/thumbnail/${encodeURIComponent(projectId)}/${encodeURIComponent(itemId)}`;
+}
+
+/** Public extracted-audio URL — Range-aware WAV streamer. */
+export function audioUrl(projectId: string, itemId: string): string {
+  return `/api/media/audio/${encodeURIComponent(projectId)}/${encodeURIComponent(itemId)}`;
+}
+
+/** Public peaks URL. */
+export function waveformUrl(projectId: string, itemId: string): string {
+  return `/api/media/waveform/${encodeURIComponent(projectId)}/${encodeURIComponent(itemId)}`;
 }
 
 /** Stable storage key persisted in project state. */

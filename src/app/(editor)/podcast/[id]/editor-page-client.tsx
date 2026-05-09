@@ -1,6 +1,10 @@
 "use client";
 
 import { EditorShell } from "@/components/editor/editor-shell";
+import {
+  getProjectClips,
+  getProjectMediaBin,
+} from "@/lib/podcast/migrate";
 import { useProject } from "@/lib/podcast/use-podcast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -21,7 +25,10 @@ export function EditorPageClient({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (!ready) return;
     if (!project) return;
-    if (project.mediaBin.length === 0 && (project.editor?.clips.length ?? 0) === 0) {
+    if (
+      getProjectMediaBin(project).length === 0 &&
+      getProjectClips(project).length === 0
+    ) {
       router.replace(`/podcast/${projectId}/import`);
     }
   }, [ready, project, projectId, router]);

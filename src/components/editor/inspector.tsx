@@ -10,6 +10,7 @@ import type {
   VideoClip,
 } from "@/lib/editor/types";
 import type { PodcastProject } from "@/lib/podcast/types";
+import { SyncDiagnostics } from "./sync-diagnostics";
 
 /**
  * Inspector — right panel showing properties of the selected clip.
@@ -82,6 +83,9 @@ function ProjectInspector({ project }: { project: PodcastProject }) {
         <Row label="Aspect" value={doc.aspect} valueClass="text-foreground" />
         <Row label="Duration" value={formatPlayheadTime(doc.duration)} />
       </div>
+
+      <SectionLabel>Sync</SectionLabel>
+      <SyncDiagnostics project={project} />
 
       <SectionLabel>Hint</SectionLabel>
       <p className="rounded-lg border border-border bg-surface-2/40 px-3 py-2 text-[11px] leading-relaxed text-muted">

@@ -3,6 +3,12 @@ import {
   formatRelativeDate,
   projectShortCode,
 } from "@/lib/podcast/format";
+import {
+  getProjectAspect,
+  getProjectClips,
+  getProjectMediaBin,
+  getProjectViralClips,
+} from "@/lib/podcast/migrate";
 import { countImportedMedia } from "@/lib/podcast/pipeline";
 import type { PodcastProject } from "@/lib/podcast/types";
 import Link from "next/link";
@@ -16,11 +22,11 @@ import Link from "next/link";
  */
 
 export function ProjectCard({ project }: { project: PodcastProject }) {
-  const importedCount =
-    project.mediaBin.length || countImportedMedia(project.media);
-  const clipCount = project.editor?.clips.length ?? 0;
-  const viralCount = project.editor?.viralClips.length ?? 0;
-  const aspect = project.editor?.aspect ?? "16:9";
+  const bin = getProjectMediaBin(project);
+  const importedCount = bin.length || countImportedMedia(project.media);
+  const clipCount = getProjectClips(project).length;
+  const viralCount = getProjectViralClips(project).length;
+  const aspect = getProjectAspect(project);
   const hasContent = importedCount > 0;
   const code = projectShortCode(project.id);
   const href = hasContent
@@ -97,9 +103,9 @@ export function ProjectCard({ project }: { project: PodcastProject }) {
  * clips, we show a tiny clip strip representing the timeline density.
  */
 function ProjectFilmstrip({ project }: { project: PodcastProject }) {
-  const aspect = project.editor?.aspect ?? "16:9";
-  const sources = project.mediaBin.slice(0, 8);
-  const clips = project.editor?.clips ?? [];
+  const aspect = getProjectAspect(project);
+  const sources = getProjectMediaBin(project).slice(0, 8);
+  const clips = getProjectClips(project);
 
   if (sources.length === 0) {
     return (

@@ -12,6 +12,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useRef,
 } from "react";
+import { WaveformView } from "../waveform-view";
 
 /**
  * TimelineClip — interactive clip block.
@@ -34,12 +35,14 @@ export function TimelineClip({
   zoom,
   selected,
   mediaBin,
+  projectId,
 }: {
   clip: EditorClip;
   track: Track;
   zoom: number;
   selected: boolean;
   mediaBin: MediaBinItem[];
+  projectId: string;
 }) {
   const store = useEditorStore();
   const ref = useRef<HTMLDivElement>(null);
@@ -176,9 +179,38 @@ export function TimelineClip({
           <p className="truncate text-[11px] font-medium leading-tight text-white/95">
             {clipDisplayName(clip, media)}
           </p>
-          {track.kind === "audio" && (
-            <Waveform color={tint} width={width - 28} height={track.height - 22} />
-          )}
+          {track.kind === "audio" &&
+            (media && media.waveformReady ? (
+              <WaveformView
+                projectId={projectId}
+                item={media}
+                width={Math.max(0, width - 28)}
+                height={Math.max(0, track.height - 22)}
+                inPoint={clip.kind === "audio" ? clip.inPoint : 0}
+                duration={clip.duration}
+                color="rgba(255,255,255,0.85)"
+              />
+            ) : (
+              <Waveform
+                color={tint}
+                width={width - 28}
+                height={track.height - 22}
+              />
+            ))}
+          {track.kind === "video" &&
+            media &&
+            media.waveformReady &&
+            track.height >= 56 && (
+              <WaveformView
+                projectId={projectId}
+                item={media}
+                width={Math.max(0, width - 28)}
+                height={Math.max(0, Math.min(20, track.height - 32))}
+                inPoint={clip.kind === "video" ? clip.inPoint : 0}
+                duration={clip.duration}
+                color="rgba(255,255,255,0.55)"
+              />
+            )}
         </div>
       </div>
     </div>

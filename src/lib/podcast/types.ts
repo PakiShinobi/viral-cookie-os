@@ -90,8 +90,33 @@ export interface PodcastProject {
   editor: EditorDoc | null;
   pipeline: Record<PipelineStage, PipelineStageState>;
   clipSuggestions: ViralClipSuggestion[];
+  /**
+   * Per-pair sync diagnostics — populated by the Sync stage. Stored on
+   * the project so the editor can show alignment offsets and confidence
+   * without re-running the analysis.
+   */
+  syncRecords: ProjectSyncRecord[];
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Slim, project-persisted shape of `SyncRecord` from `lib/media/types`.
+ * Re-declared here to avoid pulling the server-side media types into
+ * the client bundle and to keep the project schema self-contained.
+ */
+export interface ProjectSyncRecord {
+  id: string;
+  referenceItemId: string;
+  candidateItemId: string;
+  status: "not_run" | "running" | "ok" | "low_confidence" | "failed";
+  offsetSec: number | null;
+  confidence: number | null;
+  peakRatio: number | null;
+  searchWindowSec: number | null;
+  method: "peak_xcorr" | null;
+  error: string | null;
+  computedAt: string;
 }
 
 /* ===============================
@@ -116,6 +141,24 @@ export interface BinItemProbeSummary {
   audioChannels: number | null;
   audioSampleRate: number | null;
   audioStreamCount: number;
+}
+
+export type BinItemProcessingState =
+  | "idle"
+  | "queued"
+  | "extracting_audio"
+  | "waveform"
+  | "ready"
+  | "failed";
+
+/**
+ * Compact pointer to the waveform peaks resource. Held on the bin item
+ * so the timeline can size its render before the JSON is loaded.
+ */
+export interface BinItemWaveformInfo {
+  peaksPerSecond: number;
+  peakCount: number;
+  durationSec: number;
 }
 
 export interface MediaBinItem {
@@ -144,6 +187,22 @@ export interface MediaBinItem {
   thumbnailUrl: string | null;
   /** Compact probe metadata. Null until probing completes / fails. */
   probe: BinItemProbeSummary | null;
+  /**
+   * Audio extraction state. For video sources we extract a separate
+   * PCM WAV that the editor uses for analysis and (eventually) sync.
+   * For audio-only sources `audioReady` flips true once peaks land —
+   * the WAV is the source itself.
+   */
+  audioReady: boolean;
+  audioUrl: string | null;
+  /** Real waveform peaks endpoint, populated after the waveform job. */
+  waveformReady: boolean;
+  waveformUrl: string | null;
+  waveform: BinItemWaveformInfo | null;
+  /** Tracks the in-flight processing job so the client can poll. */
+  processingJobId: string | null;
+  processingState: BinItemProcessingState;
+  processingError: string | null;
 }
 
 /* ===============================

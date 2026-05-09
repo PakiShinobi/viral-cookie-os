@@ -49,6 +49,12 @@ export class EditorStore {
    * or no snap occurred. Used to render a guide line on the timeline.
    */
   private snapHint: SnapHint | null = null;
+  /**
+   * Ephemeral playback state — never persisted to the project. The editor
+   * boots paused; transport methods flip this and drive the audio/video
+   * playback engine in the shell.
+   */
+  private playing = false;
 
   constructor(initial: EditorDoc) {
     this.state = initial;
@@ -58,6 +64,7 @@ export class EditorStore {
 
   getState = (): EditorDoc => this.state;
   getSnapHint = (): SnapHint | null => this.snapHint;
+  getIsPlaying = (): boolean => this.playing;
 
   subscribe = (l: Listener): (() => void) => {
     this.listeners.add(l);
@@ -84,6 +91,23 @@ export class EditorStore {
     const t = Math.max(0, time);
     if (t === this.state.playhead) return;
     this.commit({ ...this.state, playhead: t });
+  };
+
+  play = (): void => {
+    if (this.playing) return;
+    this.playing = true;
+    this.listeners.forEach((l) => l());
+  };
+
+  pause = (): void => {
+    if (!this.playing) return;
+    this.playing = false;
+    this.listeners.forEach((l) => l());
+  };
+
+  togglePlay = (): void => {
+    if (this.playing) this.pause();
+    else this.play();
   };
 
   setZoom = (zoom: number): void => {

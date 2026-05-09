@@ -1,5 +1,6 @@
 "use client";
 
+import { migratePodcastProject } from "./migrate";
 import type { PodcastProject } from "./types";
 
 /**
@@ -14,6 +15,11 @@ import type { PodcastProject } from "./types";
  * The storage layer is intentionally narrow:
  *   list / get / save / remove / subscribe.
  *
+ * Every read goes through `migratePodcastProject` so callers can rely on
+ * the canonical schema (mediaBin, editor, full pipeline, etc.) even when
+ * the persisted record predates a field. Records that fail migration are
+ * silently dropped — they would have crashed the rest of the studio.
+ *
  * Higher-level mutations (create, update media, advance stage) live in the
  * services module, which composes these primitives.
  */
@@ -25,17 +31,44 @@ function isBrowser(): boolean {
   return typeof window !== "undefined";
 }
 
-function readAll(): PodcastProject[] {
-  if (!isBrowser()) return [];
+function readRawString(): string {
+  if (!isBrowser()) return "";
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed as PodcastProject[];
+    return window.localStorage.getItem(STORAGE_KEY) ?? "";
   } catch {
-    return [];
+    return "";
   }
+}
+
+/**
+ * Cache the migrated array keyed on the raw localStorage string. Re-reads
+ * during the same React commit (snapshot getter re-invocation) are then
+ * effectively free, while real writes still bust the cache by changing
+ * the raw string.
+ */
+let cachedRawKey = "\u0000not-yet-read";
+let cachedMigrated: PodcastProject[] = [];
+
+function readAll(): PodcastProject[] {
+  const raw = readRawString();
+  if (raw === cachedRawKey) return cachedMigrated;
+
+  let parsed: unknown;
+  try {
+    parsed = raw ? JSON.parse(raw) : [];
+  } catch {
+    parsed = [];
+  }
+  const out: PodcastProject[] = [];
+  if (Array.isArray(parsed)) {
+    for (const entry of parsed) {
+      const migrated = migratePodcastProject(entry);
+      if (migrated) out.push(migrated);
+    }
+  }
+  cachedRawKey = raw;
+  cachedMigrated = out;
+  return out;
 }
 
 function writeAll(projects: PodcastProject[]): void {

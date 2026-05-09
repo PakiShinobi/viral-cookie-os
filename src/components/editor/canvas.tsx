@@ -1,6 +1,9 @@
 "use client";
 
-import { useEditorDoc } from "@/lib/editor/use-editor";
+import {
+  useEditorDoc,
+  useEditorPlayback,
+} from "@/lib/editor/use-editor";
 import { formatPlayheadTime } from "@/lib/editor/timeline-math";
 import type {
   EditorDoc,
@@ -195,6 +198,7 @@ function CanvasVideoLayer({
   const t = clip.transform;
   const tx = `translate(-50%, -50%) translate(${t.x * 100}%, ${t.y * 100}%) scale(${t.scale})`;
   const ref = useRef<HTMLVideoElement>(null);
+  const isPlaying = useEditorPlayback();
   // Track the URL that errored, so swapping to a new previewUrl auto-clears
   // the error state without needing a setState-in-effect dance.
   const [erroredUrl, setErroredUrl] = useState<string | null>(null);
@@ -218,6 +222,23 @@ function CanvasVideoLayer({
     }
   }, [sourceTime]);
 
+  // Drive native playback in lockstep with the editor transport. The
+  // canvas video plays muted (the audio engine routes its own audio
+  // sources via `<audio>` elements) so the user only hears the active
+  // mix, even when the video is the only source.
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (isPlaying) {
+      const promise = v.play();
+      if (promise && typeof promise.catch === "function") {
+        promise.catch(() => {});
+      }
+    } else {
+      v.pause();
+    }
+  }, [isPlaying]);
+
   const showPlaceholder = !media.previewUrl || hasError;
 
   return (
@@ -233,7 +254,6 @@ function CanvasVideoLayer({
             ref={ref}
             src={media.previewUrl ?? undefined}
             className="h-full w-full bg-black object-cover"
-            muted
             playsInline
             preload="metadata"
             onLoadedMetadata={() => {

@@ -3,9 +3,10 @@
 import { formatBytes, formatDuration } from "@/lib/podcast/format";
 import {
   addBinItem,
+  patchBinItem,
   removeBinItem,
 } from "@/lib/podcast/services";
-import { uploadMedia } from "@/lib/media/client";
+import { pollJob, uploadMedia } from "@/lib/media/client";
 import type { MediaBinItem, PodcastProject } from "@/lib/podcast/types";
 import { useEditorStore } from "@/lib/editor/use-editor";
 import { useProject } from "@/lib/podcast/use-podcast";
@@ -50,12 +51,56 @@ export function MediaBinPanel({
           kind,
         });
         addBinItem(live.id, result, kind);
+        if (result.processingJobId) {
+          void watchProcessingJob(live.id, result.itemId, result.processingJobId);
+        }
       } catch {
         // Errors surface in the per-slot card; the bin panel intentionally
         // stays minimal — a future enhancement can wire toast feedback here.
       }
     }
     setBusy(false);
+  }
+
+  async function watchProcessingJob(
+    projectId: string,
+    itemId: string,
+    jobId: string,
+  ) {
+    try {
+      const job = await pollJob(jobId);
+      if (job.status === "succeeded") {
+        const r = (job.result ?? {}) as {
+          audioReady?: boolean;
+          audioUrl?: string | null;
+          waveformReady?: boolean;
+          waveformUrl?: string | null;
+          waveform?: {
+            peaksPerSecond: number;
+            peakCount: number;
+            durationSec: number;
+          } | null;
+        };
+        patchBinItem(projectId, itemId, {
+          audioReady: !!r.audioReady,
+          audioUrl: r.audioUrl ?? null,
+          waveformReady: !!r.waveformReady,
+          waveformUrl: r.waveformUrl ?? null,
+          waveform: r.waveform ?? null,
+          processingJobId: null,
+          processingState:
+            r.waveformReady && r.audioReady ? "ready" : "failed",
+        });
+      } else {
+        patchBinItem(projectId, itemId, {
+          processingJobId: null,
+          processingState: "failed",
+          processingError: job.error,
+        });
+      }
+    } catch {
+      /* polling errors are non-fatal; the slot card has the canonical retry path */
+    }
   }
 
   function onChange(e: ChangeEvent<HTMLInputElement>) {

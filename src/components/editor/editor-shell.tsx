@@ -7,6 +7,8 @@ import { Inspector } from "./inspector";
 import { LeftRail } from "./left-rail";
 import { Timeline } from "./timeline/timeline";
 import { TopBar } from "./top-bar";
+import { TransportEngine } from "./transport-engine";
+import { TransportShortcuts } from "./transport-shortcuts";
 
 /**
  * EditorShell — the editor workspace.
@@ -34,6 +36,8 @@ export function EditorShell({ project }: { project: PodcastProject }) {
         <Inspector project={project} />
       </div>
       <Timeline project={project} />
+      <TransportEngine project={project} />
+      <TransportShortcuts />
     </EditorProvider>
   );
 }

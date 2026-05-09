@@ -1,6 +1,11 @@
 "use client";
 
 import { countImportedMedia } from "@/lib/podcast/pipeline";
+import {
+  getProjectAspect,
+  getProjectClips,
+  getProjectMediaBin,
+} from "@/lib/podcast/migrate";
 import { useProjects } from "@/lib/podcast/use-podcast";
 import {
   formatRelativeDate,
@@ -56,9 +61,10 @@ export function PodcastProjectsStrip({
         </header>
         <ul className="divide-y divide-border">
           {projects.map((p) => {
-            const sources = p.mediaBin.length || countImportedMedia(p.media);
-            const clips = p.editor?.clips.length ?? 0;
-            const aspect = p.editor?.aspect ?? "16:9";
+            const bin = getProjectMediaBin(p);
+            const sources = bin.length || countImportedMedia(p.media);
+            const clips = getProjectClips(p).length;
+            const aspect = getProjectAspect(p);
             return (
               <li key={p.id}>
                 <Link
@@ -115,9 +121,10 @@ export function PodcastProjectsStrip({
 
       <div className="grid gap-3 md:grid-cols-3">
         {shown.map((p) => {
-          const sources = p.mediaBin.length || countImportedMedia(p.media);
-          const clips = p.editor?.clips.length ?? 0;
-          const aspect = p.editor?.aspect ?? "16:9";
+          const bin = getProjectMediaBin(p);
+          const sources = bin.length || countImportedMedia(p.media);
+          const clips = getProjectClips(p).length;
+          const aspect = getProjectAspect(p);
           return (
             <Link
               key={p.id}
@@ -136,7 +143,7 @@ export function PodcastProjectsStrip({
                 {p.title}
               </p>
               <div className="flex h-2 gap-1 overflow-hidden">
-                {p.mediaBin.slice(0, 6).map((m) => (
+                {bin.slice(0, 6).map((m) => (
                   <span
                     key={m.id}
                     className="flex-1 rounded-sm"
@@ -145,7 +152,7 @@ export function PodcastProjectsStrip({
                     }}
                   />
                 ))}
-                {p.mediaBin.length === 0 && (
+                {bin.length === 0 && (
                   <span className="flex-1 rounded-sm bg-surface-2" />
                 )}
               </div>

@@ -112,3 +112,12 @@ export function useEditorSnap(): SnapHint | null {
     () => null,
   );
 }
+
+export function useEditorPlayback(): boolean {
+  const store = useEditorStore();
+  return useSyncExternalStore(
+    store.subscribe,
+    store.getIsPlaying,
+    () => false,
+  );
+}
