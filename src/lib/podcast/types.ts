@@ -38,7 +38,12 @@ export const PIPELINE_STAGES = [
 
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
-export type StageStatus = "pending" | "in_progress" | "complete" | "blocked";
+export type StageStatus =
+  | "pending"
+  | "in_progress"
+  | "complete"
+  | "blocked"
+  | "skipped";
 
 export interface PipelineStageState {
   stage: PipelineStage;
@@ -95,6 +100,24 @@ export interface PodcastProject {
 
 export type MediaBinItemKind = "video" | "audio";
 
+/**
+ * Compact probe summary persisted to project state. The full ffprobe payload
+ * (raw JSON) lives next to the source file on disk and can be re-loaded if
+ * heavier metadata is ever needed.
+ */
+export interface BinItemProbeSummary {
+  durationSec: number | null;
+  bitRate: number | null;
+  videoCodec: string | null;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+  audioCodec: string | null;
+  audioChannels: number | null;
+  audioSampleRate: number | null;
+  audioStreamCount: number;
+}
+
 export interface MediaBinItem {
   id: string;
   kind: MediaBinItemKind;
@@ -109,6 +132,18 @@ export interface MediaBinItem {
   color: string;
   /** Optional original slot hint from the legacy 4-slot import flow. */
   slotHint?: MediaSlotKind;
+  /**
+   * Server-side stable reference. `<projectId>/<itemId>` form. Files live
+   * under the configured media root (`data/media/` by default). Null while
+   * an upload is mid-flight or for legacy items pre-server-storage.
+   */
+  storageKey: string | null;
+  /** Local API route serving the source file with Range support. */
+  previewUrl: string | null;
+  /** Local API route serving the generated thumbnail (video only). */
+  thumbnailUrl: string | null;
+  /** Compact probe metadata. Null until probing completes / fails. */
+  probe: BinItemProbeSummary | null;
 }
 
 /* ===============================

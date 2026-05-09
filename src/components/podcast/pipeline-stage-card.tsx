@@ -2,7 +2,11 @@
 
 import { PLATFORM_META, PIPELINE_STAGE_META } from "@/lib/podcast/pipeline";
 import { runPipelineAction } from "@/lib/podcast/services";
-import type { PipelineStage, PodcastProject } from "@/lib/podcast/types";
+import type {
+  PipelineStage,
+  PodcastProject,
+  StageStatus,
+} from "@/lib/podcast/types";
 import { useTransition } from "react";
 import { StatusPill } from "./status-pill";
 
@@ -134,7 +138,7 @@ function StageNumber({
   status,
 }: {
   number: number;
-  status: "pending" | "in_progress" | "complete" | "blocked";
+  status: StageStatus;
 }) {
   const palette = {
     pending: {
@@ -156,6 +160,11 @@ function StageNumber({
       ring: "ring-error/40",
       text: "text-error",
       bg: "bg-error/10",
+    },
+    skipped: {
+      ring: "ring-border-strong",
+      text: "text-muted/80",
+      bg: "bg-surface-2/70",
     },
   }[status];
 
@@ -196,7 +205,7 @@ function Checklist({
   status,
 }: {
   items: readonly string[];
-  status: "pending" | "in_progress" | "complete" | "blocked";
+  status: StageStatus;
 }) {
   return (
     <ul className="space-y-1.5">

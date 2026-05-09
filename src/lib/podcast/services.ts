@@ -7,6 +7,7 @@ import {
 } from "./pipeline";
 import { getProject, saveProject } from "./storage";
 import type {
+  BinItemProbeSummary,
   EditorDoc,
   MediaAsset,
   MediaBinItem,
@@ -14,6 +15,7 @@ import type {
   MediaSlotKind,
   MediaTrackType,
   PipelineStage,
+  PipelineStageState,
   PodcastProject,
   PodcastProjectDraft,
   StageStatus,
@@ -113,7 +115,7 @@ export function attachMedia(
     importedAt: new Date().toISOString(),
   };
   const media = { ...project.media, [slot]: asset };
-  const next = recomputeImportStage({ ...project, media });
+  const next = recomputePipelineFromMedia({ ...project, media });
   return saveProject(next);
 }
 
@@ -124,39 +126,120 @@ export function removeMedia(
   const project = getProject(id);
   if (!project) return null;
   const media = { ...project.media, [slot]: null };
-  const next = recomputeImportStage({ ...project, media });
+  const next = recomputePipelineFromMedia({ ...project, media });
   return saveProject(next);
 }
 
 /**
- * The Imported stage auto-completes when all four slots are populated.
- * Removing media from a complete project rolls the stage back to in_progress.
+ * Recompute Import + Sync stages based on the current media bin.
+ *
+ * Import:
+ *   - complete   when at least one video source is present
+ *   - in_progress when partial (e.g. only audio, no video yet)
+ *   - pending    when nothing imported
+ *
+ * Sync:
+ *   - skipped     when total source count <= 1 (nothing to align against)
+ *   - pending     when 2+ sources are present (waiting for the user)
+ *
+ * Downstream stages are never rolled back here.
  */
-function recomputeImportStage(project: PodcastProject): PodcastProject {
-  const slots: MediaSlotKind[] = ["camera_1", "camera_2", "mic_1", "mic_2"];
-  const filled = slots.filter((s) => project.media[s] !== null).length;
-  let status: StageStatus = "pending";
-  if (filled === slots.length) status = "complete";
-  else if (filled > 0) status = "in_progress";
-
-  const importedState = project.pipeline.imported;
+function recomputePipelineFromBin(project: PodcastProject): PodcastProject {
+  const bin = project.mediaBin;
+  const videoCount = bin.filter((b) => b.kind === "video").length;
+  const sourceCount = bin.length;
   const now = new Date().toISOString();
-  const pipeline = {
-    ...project.pipeline,
-    imported: {
-      ...importedState,
-      status,
-      startedAt:
-        importedState.startedAt ??
-        (status !== "pending" ? now : null),
-      completedAt: status === "complete" ? now : null,
-    },
+
+  let importStatus: StageStatus = "pending";
+  if (videoCount >= 1) importStatus = "complete";
+  else if (sourceCount > 0) importStatus = "in_progress";
+
+  const importedPrev = project.pipeline.imported;
+  const imported: PipelineStageState = {
+    ...importedPrev,
+    status: importStatus,
+    startedAt:
+      importedPrev.startedAt ??
+      (importStatus !== "pending" ? now : null),
+    completedAt:
+      importStatus === "complete" ? importedPrev.completedAt ?? now : null,
   };
 
-  // If the import stage is no longer complete, downstream stages that were
-  // pending stay pending, but never roll back completed downstream work
-  // automatically — that would be destructive and surprising.
-  return { ...project, pipeline };
+  // Sync stage rules
+  const syncedPrev = project.pipeline.synced;
+  let syncStatus: StageStatus = syncedPrev.status;
+  let syncNote: string | null = syncedPrev.note;
+  if (syncedPrev.status === "in_progress" || syncedPrev.status === "complete") {
+    // Don't disturb an in-flight or finished sync.
+  } else if (sourceCount <= 1) {
+    syncStatus = "skipped";
+    syncNote = "Single source — sync auto-skipped.";
+  } else {
+    syncStatus = "pending";
+    syncNote = "Multiple sources — sync available.";
+  }
+  const synced: PipelineStageState = {
+    ...syncedPrev,
+    status: syncStatus,
+    note: syncNote,
+  };
+
+  return {
+    ...project,
+    pipeline: { ...project.pipeline, imported, synced },
+  };
+}
+
+/**
+ * Legacy 4-slot media surface (still used by the pipeline tracker page).
+ * Now delegates source counting through to the bin-aware recompute when the
+ * bin is the source of truth.
+ */
+function recomputePipelineFromMedia(project: PodcastProject): PodcastProject {
+  const slots: MediaSlotKind[] = ["camera_1", "camera_2", "mic_1", "mic_2"];
+  const filled = slots.filter((s) => project.media[s] !== null);
+  const videoFilled = filled.filter(
+    (s) => project.media[s]?.trackType === "video",
+  );
+
+  let importStatus: StageStatus = "pending";
+  if (videoFilled.length >= 1) importStatus = "complete";
+  else if (filled.length > 0) importStatus = "in_progress";
+
+  const now = new Date().toISOString();
+  const importedPrev = project.pipeline.imported;
+  const imported: PipelineStageState = {
+    ...importedPrev,
+    status: importStatus,
+    startedAt:
+      importedPrev.startedAt ??
+      (importStatus !== "pending" ? now : null),
+    completedAt:
+      importStatus === "complete" ? importedPrev.completedAt ?? now : null,
+  };
+
+  const syncedPrev = project.pipeline.synced;
+  let syncStatus: StageStatus = syncedPrev.status;
+  let syncNote: string | null = syncedPrev.note;
+  if (syncedPrev.status === "in_progress" || syncedPrev.status === "complete") {
+    // Don't disturb an in-flight or finished sync.
+  } else if (filled.length <= 1) {
+    syncStatus = "skipped";
+    syncNote = "Single source — sync auto-skipped.";
+  } else {
+    syncStatus = "pending";
+    syncNote = "Multiple sources — sync available.";
+  }
+  const synced: PipelineStageState = {
+    ...syncedPrev,
+    status: syncStatus,
+    note: syncNote,
+  };
+
+  return {
+    ...project,
+    pipeline: { ...project.pipeline, imported, synced },
+  };
 }
 
 export function setStageStatus(
@@ -197,9 +280,11 @@ export async function runPipelineAction(
   const project = getProject(id);
   if (!project) return null;
 
-  // Pre-flight: imported stage must be complete before any other stage runs.
+  // Pre-flight: at least the import stage must be complete before any other
+  // stage runs. Sync may be `skipped` (single-source projects) or `complete` —
+  // either is fine for downstream work.
   if (stage !== "imported" && project.pipeline.imported.status !== "complete") {
-    setStageStatus(id, stage, "blocked", "Import all media before running.");
+    setStageStatus(id, stage, "blocked", "Import a source video first.");
     return getProject(id);
   }
 
@@ -282,39 +367,85 @@ function pickBinColor(index: number): string {
 }
 
 /**
- * Add a media file to the project bin. Returns the updated project.
+ * Server-supplied metadata describing a freshly imported media file.
+ * Returned by `POST /api/media/upload` and persisted into the bin item.
+ */
+export interface BinItemServerInfo {
+  itemId: string;
+  storageKey: string;
+  previewUrl: string;
+  thumbnailUrl: string | null;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  probe: BinItemProbeSummary | null;
+}
+
+/**
+ * Commit a server-imported media file into the project bin.
  *
- * Files are stored as metadata only (filename, size, duration). Real bytes
- * stay on the user's disk. The editor preview and downstream ffmpeg /
- * Remotion export plug into this same surface later.
+ * Bytes are persisted on disk (under the configured media root) — only
+ * stable references and lightweight metadata land in localStorage.
+ *
+ * If `slotHint` is provided, any existing bin item already occupying that
+ * slot is removed: each of the four import slots holds at most one source.
  */
 export function addBinItem(
   id: string,
-  file: File,
+  info: BinItemServerInfo,
   kind: MediaBinItemKind,
-  durationSec: number | null,
   options?: { slotHint?: MediaSlotKind },
 ): { project: PodcastProject; item: MediaBinItem } | null {
   const project = getProject(id);
   if (!project) return null;
-  const index = project.mediaBin.length;
+  const slotHint = options?.slotHint;
+
+  // Slot exclusivity: drop any prior item bound to the same slot. Editor
+  // doc clips referencing the displaced item are cleaned up alongside.
+  const displacedIds = slotHint
+    ? project.mediaBin.filter((b) => b.slotHint === slotHint).map((b) => b.id)
+    : [];
+  const remaining = displacedIds.length
+    ? project.mediaBin.filter((b) => !displacedIds.includes(b.id))
+    : project.mediaBin;
+
+  const index = remaining.length;
   const item: MediaBinItem = {
-    id: generateId("bin"),
+    id: info.itemId,
     kind,
-    fileName: file.name,
-    fileSize: file.size,
-    mimeType: file.type || (kind === "video" ? "video/*" : "audio/*"),
-    durationSec,
+    fileName: info.fileName,
+    fileSize: info.fileSize,
+    mimeType:
+      info.mimeType ||
+      (kind === "video" ? "video/mp4" : "audio/mpeg"),
+    durationSec: info.probe?.durationSec ?? null,
     importedAt: new Date().toISOString(),
-    label: file.name.replace(/\.[^.]+$/, ""),
+    label: info.fileName.replace(/\.[^.]+$/, ""),
     color: pickBinColor(index),
-    slotHint: options?.slotHint,
+    slotHint,
+    storageKey: info.storageKey,
+    previewUrl: info.previewUrl,
+    thumbnailUrl: info.thumbnailUrl,
+    probe: info.probe,
   };
-  const next = saveProject({
+
+  const editor = project.editor && displacedIds.length
+    ? {
+        ...project.editor,
+        clips: project.editor.clips.filter((c) =>
+          c.kind === "video" || c.kind === "audio"
+            ? !displacedIds.includes(c.mediaId)
+            : true,
+        ),
+      }
+    : project.editor;
+
+  const next = recomputePipelineFromBin({
     ...project,
-    mediaBin: [...project.mediaBin, item],
+    mediaBin: [...remaining, item],
+    editor,
   });
-  return { project: next, item };
+  return { project: saveProject(next), item };
 }
 
 export function removeBinItem(
@@ -323,10 +454,9 @@ export function removeBinItem(
 ): PodcastProject | null {
   const project = getProject(id);
   if (!project) return null;
-  return saveProject({
+  const next = recomputePipelineFromBin({
     ...project,
     mediaBin: project.mediaBin.filter((b) => b.id !== itemId),
-    // Drop any clips referencing this media from the editor doc.
     editor: project.editor
       ? {
           ...project.editor,
@@ -338,6 +468,7 @@ export function removeBinItem(
         }
       : null,
   });
+  return saveProject(next);
 }
 
 /**

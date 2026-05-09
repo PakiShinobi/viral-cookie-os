@@ -5,7 +5,7 @@ import {
   addBinItem,
   removeBinItem,
 } from "@/lib/podcast/services";
-import { probeMediaDuration } from "@/lib/podcast/services";
+import { uploadMedia } from "@/lib/media/client";
 import type { MediaBinItem, PodcastProject } from "@/lib/podcast/types";
 import { useEditorStore } from "@/lib/editor/use-editor";
 import { useProject } from "@/lib/podcast/use-podcast";
@@ -43,11 +43,17 @@ export function MediaBinPanel({
       const isAudio = file.type.startsWith("audio/");
       if (!isVideo && !isAudio) continue;
       const kind = isVideo ? "video" : "audio";
-      const duration = await probeMediaDuration(
-        file,
-        kind === "video" ? "video" : "audio",
-      );
-      addBinItem(live.id, file, kind, duration);
+      try {
+        const result = await uploadMedia({
+          projectId: live.id,
+          file,
+          kind,
+        });
+        addBinItem(live.id, result, kind);
+      } catch {
+        // Errors surface in the per-slot card; the bin panel intentionally
+        // stays minimal — a future enhancement can wire toast feedback here.
+      }
     }
     setBusy(false);
   }
@@ -90,7 +96,7 @@ export function MediaBinPanel({
         }`}
       >
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
-          {busy ? "Reading metadata…" : "Drop video or audio"}
+          {busy ? "Uploading & probing…" : "Drop video or audio"}
         </p>
         <label
           htmlFor={inputId}
@@ -157,20 +163,30 @@ function BinRow({
         className="group relative flex cursor-grab items-center gap-3 rounded-lg border border-border bg-surface px-2.5 py-2 transition-colors hover:border-border-strong active:cursor-grabbing"
       >
         <span
-          className="h-9 w-9 shrink-0 rounded-md"
+          className="relative h-9 w-12 shrink-0 overflow-hidden rounded-md"
           style={{
             background: `linear-gradient(135deg, ${item.color}25, ${item.color}05)`,
             border: `1px solid ${item.color}55`,
           }}
         >
-          <span className="flex h-full w-full items-center justify-center">
-            <span
-              className="font-mono text-[9px] font-medium uppercase tracking-[0.14em]"
-              style={{ color: item.color }}
-            >
-              {item.kind === "video" ? "VID" : "AUD"}
+          {item.thumbnailUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.thumbnailUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              draggable={false}
+            />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center">
+              <span
+                className="font-mono text-[9px] font-medium uppercase tracking-[0.14em]"
+                style={{ color: item.color }}
+              >
+                {item.kind === "video" ? "VID" : "AUD"}
+              </span>
             </span>
-          </span>
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[12px] font-medium text-foreground">

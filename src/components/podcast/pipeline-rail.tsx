@@ -47,7 +47,9 @@ export function PipelineRail({
                       ? "border-warning/40 bg-warning/10"
                       : state.status === "blocked"
                         ? "border-error/40 bg-error/10"
-                        : "border-border bg-surface-2"
+                        : state.status === "skipped"
+                          ? "border-border-strong bg-surface-2/60"
+                          : "border-border bg-surface-2"
                 } ${isActive ? "ring-1 ring-accent" : ""}`}
               >
                 {state.status === "complete" ? (
@@ -74,7 +76,9 @@ export function PipelineRail({
                         ? "text-warning"
                         : state.status === "blocked"
                           ? "text-error"
-                          : "text-muted"
+                          : state.status === "skipped"
+                            ? "text-muted/70"
+                            : "text-muted"
                     }`}
                   >
                     {meta.number}

@@ -80,7 +80,11 @@ export function PreviewCanvas({ project }: { project: PodcastProject }) {
 
           {/* Active video layer */}
           {activeVideo && media ? (
-            <CanvasVideoLayer clip={activeVideo} media={media} />
+            <CanvasVideoLayer
+              clip={activeVideo}
+              media={media}
+              playhead={doc.playhead}
+            />
           ) : (
             <CanvasIdleLayer aspect={aspect} />
           )}
@@ -173,41 +177,115 @@ function CanvasIdleLayer({ aspect }: { aspect: "16:9" | "9:16" }) {
   );
 }
 
+/**
+ * Active video layer — renders an actual `<video>` element seeked to the
+ * playhead. When the active clip changes, swap `src` and re-seek; when
+ * only the playhead moves, just update `currentTime`. We never autoplay
+ * — the canvas is a still preview today, not a transport surface.
+ */
 function CanvasVideoLayer({
   clip,
   media,
+  playhead,
 }: {
   clip: VideoClip;
   media: MediaBinItem;
+  playhead: number;
 }) {
   const t = clip.transform;
-  // Transform: scale around centre, then translate.
   const tx = `translate(-50%, -50%) translate(${t.x * 100}%, ${t.y * 100}%) scale(${t.scale})`;
+  const ref = useRef<HTMLVideoElement>(null);
+  // Track the URL that errored, so swapping to a new previewUrl auto-clears
+  // the error state without needing a setState-in-effect dance.
+  const [erroredUrl, setErroredUrl] = useState<string | null>(null);
+  const hasError = !!media.previewUrl && erroredUrl === media.previewUrl;
+
+  // Where in the source file should the playhead map to?
+  const sourceTime = Math.max(0, clip.inPoint + (playhead - clip.start));
+
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (!Number.isFinite(sourceTime)) return;
+    // Only seek when meaningfully different — avoids fighting the
+    // browser when frames decode in.
+    if (Math.abs(v.currentTime - sourceTime) > 0.05) {
+      try {
+        v.currentTime = sourceTime;
+      } catch {
+        /* seek can throw on metadata-not-ready, ignore */
+      }
+    }
+  }, [sourceTime]);
+
+  const showPlaceholder = !media.previewUrl || hasError;
+
   return (
     <div className="absolute inset-0 overflow-hidden rounded-[3px]">
       <div
         className="absolute left-1/2 top-1/2 origin-center"
-        style={{
-          transform: tx,
-          width: "100%",
-          height: "100%",
-        }}
+        style={{ transform: tx, width: "100%", height: "100%" }}
       >
-        <div className="bg-grain relative flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1c1c25] via-[#16161e] to-[#0c0c12]">
-          <div className="relative z-10 flex max-w-[80%] flex-col items-center gap-2 text-center">
-            <span
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ backgroundColor: media.color }}
-            />
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
-              {media.kind === "video" ? "Camera" : "Audio"} · {clip.label ?? media.label}
-            </p>
-            <p className="line-clamp-2 text-[14px] font-medium text-foreground/90">
-              {media.fileName}
-            </p>
-          </div>
-          <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/[0.04]" />
-        </div>
+        {showPlaceholder ? (
+          <VideoPlaceholder media={media} clip={clip} />
+        ) : (
+          <video
+            ref={ref}
+            src={media.previewUrl ?? undefined}
+            className="h-full w-full bg-black object-cover"
+            muted
+            playsInline
+            preload="metadata"
+            onLoadedMetadata={() => {
+              const v = ref.current;
+              if (!v) return;
+              try {
+                v.currentTime = Math.max(0, sourceTime);
+              } catch {
+                /* ignore */
+              }
+            }}
+            onError={() => setErroredUrl(media.previewUrl)}
+          />
+        )}
+        <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/[0.04]" />
+      </div>
+    </div>
+  );
+}
+
+function VideoPlaceholder({
+  media,
+  clip,
+}: {
+  media: MediaBinItem;
+  clip: VideoClip;
+}) {
+  return (
+    <div
+      className="bg-grain relative flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1c1c25] via-[#16161e] to-[#0c0c12]"
+      style={
+        media.thumbnailUrl
+          ? {
+              backgroundImage: `url(${media.thumbnailUrl})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }
+          : undefined
+      }
+    >
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative z-10 flex max-w-[80%] flex-col items-center gap-2 text-center">
+        <span
+          className="inline-block h-2 w-2 rounded-full"
+          style={{ backgroundColor: media.color }}
+        />
+        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
+          Preview unavailable · {clip.label ?? media.label}
+        </p>
+        <p className="line-clamp-2 text-[14px] font-medium text-foreground/90">
+          {media.fileName}
+        </p>
       </div>
     </div>
   );

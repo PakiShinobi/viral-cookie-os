@@ -13,6 +13,7 @@ const STATUS_LABEL: Record<StageStatus, string> = {
   in_progress: "In progress",
   complete: "Complete",
   blocked: "Blocked",
+  skipped: "Skipped",
 };
 
 const STATUS_TONE: Record<
@@ -42,6 +43,12 @@ const STATUS_TONE: Record<
     text: "text-error",
     bg: "bg-error/10",
     border: "border-error/30",
+  },
+  skipped: {
+    dot: "bg-muted/60",
+    text: "text-muted",
+    bg: "bg-surface-2",
+    border: "border-border-strong",
   },
 };
 

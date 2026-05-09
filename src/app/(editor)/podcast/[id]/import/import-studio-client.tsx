@@ -1,34 +1,27 @@
 "use client";
 
+import { ImportSlotCard } from "@/components/podcast/import-slot-card";
+import { MEDIA_SLOTS } from "@/lib/podcast/pipeline";
 import {
-  addBinItem,
-  probeMediaDuration,
-  removeBinItem,
   removeProject,
   updateProjectTitle,
 } from "@/lib/podcast/services";
 import { useProject } from "@/lib/podcast/use-podcast";
-import { formatBytes, formatDuration } from "@/lib/podcast/format";
-import type { MediaBinItem, PodcastProject } from "@/lib/podcast/types";
+import type { PodcastProject } from "@/lib/podcast/types";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  type ChangeEvent,
-  type DragEvent,
-  useId,
-  useState,
-} from "react";
+import { useState } from "react";
 
 /**
  * Import Studio.
  *
- * The first thing the user sees after clicking "New Podcast". One required
- * primary video; everything else is optional. When the user clicks
- * "Continue to editor" we route to the editor — it boots its own document.
+ * Four canonical source slots. Video 1 is required to continue; everything
+ * else is optional. Each card runs its own upload pipeline (XHR with
+ * progress → server probes + thumbnails → bin item commit), so users can
+ * fill slots in parallel.
  *
- * The import surface is intentionally generous: drop multiple files at
- * once, drag onto any zone, paste from the OS, or use the file picker.
- * No metadata form, no opinion about cameras vs cameras vs mics.
+ * The Sync stage downstream is auto-skipped on single-source projects and
+ * auto-pending when multiple sources are present.
  */
 
 export function ImportStudioClient({ projectId }: { projectId: string }) {
@@ -49,22 +42,56 @@ export function ImportStudioClient({ projectId }: { projectId: string }) {
     <div className="flex h-full w-full flex-col overflow-hidden">
       <ImportHeader project={project} />
       <main className="flex min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-5xl px-6 py-8 sm:px-10 sm:py-12">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <ImportZone project={project} />
+        <div className="mx-auto w-full max-w-6xl px-6 py-8 sm:px-10 sm:py-12">
+          <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <section className="space-y-6">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
+                  Step 1 · Import
+                </p>
+                <h1 className="mt-2 text-[28px] font-semibold leading-[1.1] tracking-tight text-foreground sm:text-[34px]">
+                  Bring your raw media in.
+                </h1>
+                <p className="mt-2 max-w-md text-[14px] leading-relaxed text-muted">
+                  Drop into the four canonical source slots. Only Video 1 is
+                  required — everything else (second camera, host mic, guest
+                  mic) is optional.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {MEDIA_SLOTS.map((slot) => (
+                  <ImportSlotCard
+                    key={slot.slot}
+                    project={project}
+                    slotMeta={{
+                      slot: slot.slot,
+                      label: slot.label,
+                      shortLabel: slot.shortLabel,
+                      trackType: slot.trackType,
+                      accept: slot.accept,
+                      hint: slot.hint,
+                      required: slot.required,
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Hint highlight={hasVideo}>1 video minimum</Hint>
+                <Hint highlight={videoCount >= 2}>
+                  2 cameras unlocks multicam
+                </Hint>
+                <Hint highlight={syncEnabled}>2+ sources unlock auto-sync</Hint>
+              </div>
+            </section>
+
             <ImportSidebar
               videoCount={videoCount}
               audioCount={audioCount}
               syncEnabled={syncEnabled}
             />
           </div>
-
-          {totalSources > 0 && (
-            <BinList
-              project={project}
-              onRemove={(mid) => removeBinItem(project.id, mid)}
-            />
-          )}
         </div>
       </main>
       <ImportFooter
@@ -147,104 +174,6 @@ function ImportHeader({ project }: { project: PodcastProject }) {
   );
 }
 
-function ImportZone({ project }: { project: PodcastProject }) {
-  const [hovering, setHovering] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const inputId = useId();
-
-  async function handleFiles(files: FileList | File[]) {
-    setBusy(true);
-    for (const file of Array.from(files)) {
-      const isVideo = file.type.startsWith("video/");
-      const isAudio = file.type.startsWith("audio/");
-      if (!isVideo && !isAudio) continue;
-      const kind = isVideo ? "video" : "audio";
-      const duration = await probeMediaDuration(
-        file,
-        kind === "video" ? "video" : "audio",
-      );
-      addBinItem(project.id, file, kind, duration);
-    }
-    setBusy(false);
-  }
-
-  function onChange(e: ChangeEvent<HTMLInputElement>) {
-    if (e.target.files && e.target.files.length > 0) {
-      void handleFiles(e.target.files);
-    }
-    e.target.value = "";
-  }
-
-  function onDrop(e: DragEvent<HTMLLabelElement>) {
-    e.preventDefault();
-    setHovering(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      void handleFiles(e.dataTransfer.files);
-    }
-  }
-
-  return (
-    <section className="space-y-5">
-      <div>
-        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
-          Step 1 · Import
-        </p>
-        <h1 className="mt-2 text-[28px] font-semibold leading-[1.1] tracking-tight text-foreground sm:text-[34px]">
-          Bring your raw media in.
-        </h1>
-        <p className="mt-2 max-w-md text-[14px] leading-relaxed text-muted">
-          One video file is enough. Drop additional cameras, mic feeds, or
-          music — anything you might cut against on the timeline.
-        </p>
-      </div>
-
-      <label
-        htmlFor={inputId}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setHovering(true);
-        }}
-        onDragLeave={() => setHovering(false)}
-        onDrop={onDrop}
-        className={`relative block cursor-pointer rounded-2xl border border-dashed p-10 transition-colors ${
-          hovering
-            ? "border-accent/60 bg-accent-subtle"
-            : "border-border-strong bg-surface/60 hover:border-border-strong hover:bg-surface"
-        }`}
-      >
-        <div className="flex flex-col items-center gap-4 text-center">
-          <DropGlyph hovering={hovering} />
-          <div>
-            <p className="text-[16px] font-semibold text-foreground">
-              {busy ? "Reading metadata…" : "Drop files to import"}
-            </p>
-            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
-              MP4 · MOV · WAV · MP3 · multi-select
-            </p>
-          </div>
-          <span className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-[12px] font-medium text-foreground">
-            Or browse files
-          </span>
-        </div>
-        <input
-          id={inputId}
-          type="file"
-          multiple
-          accept="video/*,audio/*"
-          className="sr-only"
-          onChange={onChange}
-        />
-      </label>
-
-      <div className="flex flex-wrap gap-2">
-        <Hint>1 video minimum</Hint>
-        <Hint>2 cameras unlocks multicam</Hint>
-        <Hint>2+ sources unlock auto-sync</Hint>
-      </div>
-    </section>
-  );
-}
-
 function ImportSidebar({
   videoCount,
   audioCount,
@@ -255,17 +184,25 @@ function ImportSidebar({
   syncEnabled: boolean;
 }) {
   return (
-    <aside className="space-y-4 lg:sticky lg:top-8 lg:self-start">
+    <aside className="space-y-4 xl:sticky xl:top-8 xl:self-start">
       <div className="space-y-3 rounded-2xl border border-border bg-surface p-5">
         <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
           Session
         </p>
         <dl className="space-y-2 font-mono text-[10px] uppercase tracking-[0.14em]">
-          <Row label="Video sources" value={String(videoCount)} highlight={videoCount > 0} />
-          <Row label="Audio sources" value={String(audioCount)} highlight={audioCount > 0} />
+          <Row
+            label="Video sources"
+            value={String(videoCount)}
+            highlight={videoCount > 0}
+          />
+          <Row
+            label="Audio sources"
+            value={String(audioCount)}
+            highlight={audioCount > 0}
+          />
           <Row
             label="Sync stage"
-            value={syncEnabled ? "Enabled" : "Skipped"}
+            value={syncEnabled ? "Available" : "Skipped"}
             highlight={syncEnabled}
           />
         </dl>
@@ -273,88 +210,22 @@ function ImportSidebar({
 
       <div className="space-y-3 rounded-2xl border border-border bg-surface p-5">
         <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
-          Up next
+          Pipeline
         </p>
         <ol className="space-y-2 text-[12px] text-muted">
-          <Step n="01" title="Editor opens" hint="Tracks ready, snap on" />
+          <Step n="01" title="Import" hint="You are here" active />
           <Step
             n="02"
-            title={syncEnabled ? "Auto-align mics to cam" : "Sync skipped"}
-            hint={syncEnabled ? "Multi-source detected" : "Single source"}
+            title="Sync"
+            hint={syncEnabled ? "Multi-source aligned" : "Auto-skipped"}
           />
-          <Step n="03" title="Trim, switch, overlay" hint="Inspector + timeline" />
-          <Step n="04" title="Cut viral clips" hint="Mark in / out → 9:16" />
+          <Step n="03" title="Editor" hint="Multi-track timeline" />
+          <Step n="04" title="Audio Export" hint="Clean MP3 master" />
+          <Step n="05" title="Viral Clips" hint="Mark in / out → 9:16" />
+          <Step n="06" title="Distribution" hint="Stage every output" />
         </ol>
       </div>
     </aside>
-  );
-}
-
-function BinList({
-  project,
-  onRemove,
-}: {
-  project: PodcastProject;
-  onRemove: (id: string) => void;
-}) {
-  return (
-    <section className="mt-8 space-y-3">
-      <header className="flex items-baseline justify-between border-b border-border pb-2">
-        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
-          Imported · {project.mediaBin.length}
-        </p>
-      </header>
-      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {project.mediaBin.map((m) => (
-          <BinTile key={m.id} item={m} onRemove={() => onRemove(m.id)} />
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function BinTile({
-  item,
-  onRemove,
-}: {
-  item: MediaBinItem;
-  onRemove: () => void;
-}) {
-  return (
-    <li className="group flex items-center gap-3 rounded-xl border border-border bg-surface p-3">
-      <span
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md"
-        style={{
-          background: `linear-gradient(135deg, ${item.color}25, ${item.color}05)`,
-          border: `1px solid ${item.color}55`,
-        }}
-      >
-        <span
-          className="font-mono text-[10px] font-medium uppercase tracking-[0.14em]"
-          style={{ color: item.color }}
-        >
-          {item.kind === "video" ? "VID" : "AUD"}
-        </span>
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-foreground">
-          {item.label}
-        </p>
-        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-          {formatDuration(item.durationSec)}
-          <span className="px-1.5 text-border-strong">·</span>
-          {formatBytes(item.fileSize)}
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={onRemove}
-        title="Remove"
-        className="rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted/70 opacity-0 transition-all hover:text-error group-hover:opacity-100"
-      >
-        Remove
-      </button>
-    </li>
   );
 }
 
@@ -391,7 +262,7 @@ function ImportFooter({
       </p>
       <div className="ml-auto flex items-center gap-2">
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
-          Step 1 of 2
+          Step 1 of 6
         </span>
         <button
           type="button"
@@ -425,9 +296,21 @@ function ProjectMissing() {
   );
 }
 
-function Hint({ children }: { children: React.ReactNode }) {
+function Hint({
+  children,
+  highlight,
+}: {
+  children: React.ReactNode;
+  highlight?: boolean;
+}) {
   return (
-    <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+    <span
+      className={`rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
+        highlight
+          ? "border-success/40 bg-success/10 text-success"
+          : "border-border bg-surface-2 text-muted"
+      }`}
+    >
       {children}
     </span>
   );
@@ -437,18 +320,30 @@ function Step({
   n,
   title,
   hint,
+  active,
 }: {
   n: string;
   title: string;
   hint: string;
+  active?: boolean;
 }) {
   return (
     <li className="flex items-start gap-3">
-      <span className="mt-px font-mono text-[10px] tabular-nums uppercase tracking-[0.18em] text-muted">
+      <span
+        className={`mt-px font-mono text-[10px] tabular-nums uppercase tracking-[0.18em] ${
+          active ? "text-accent" : "text-muted"
+        }`}
+      >
         {n}
       </span>
       <div>
-        <p className="text-[12px] font-medium text-foreground">{title}</p>
+        <p
+          className={`text-[12px] font-medium ${
+            active ? "text-foreground" : "text-foreground/80"
+          }`}
+        >
+          {title}
+        </p>
         <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
           {hint}
         </p>
@@ -471,36 +366,5 @@ function Row({
       <dt className="text-muted">{label}</dt>
       <dd className={highlight ? "text-foreground" : "text-muted"}>{value}</dd>
     </div>
-  );
-}
-
-function DropGlyph({ hovering }: { hovering: boolean }) {
-  return (
-    <svg
-      width="48"
-      height="48"
-      viewBox="0 0 48 48"
-      aria-hidden
-      className={hovering ? "text-accent" : "text-muted"}
-    >
-      <rect
-        x="6"
-        y="14"
-        width="36"
-        height="24"
-        rx="3"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        fill="none"
-        strokeDasharray="3 2"
-      />
-      <path
-        d="M24 8V26M24 8L18 14M24 8L30 14"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

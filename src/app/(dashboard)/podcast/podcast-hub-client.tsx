@@ -195,12 +195,12 @@ function SectionLabel({
 
 function EditorFlowOverview() {
   const steps = [
-    { num: "01", label: "Import", body: "Drop video and mics" },
-    { num: "02", label: "Sync", body: "Auto-align if multi-source" },
-    { num: "03", label: "Edit", body: "Trim, switch, overlay" },
-    { num: "04", label: "Reframe", body: "16:9 ↔ 9:16 reframe" },
-    { num: "05", label: "Mark clips", body: "In/out → 9:16 reel" },
-    { num: "06", label: "Export", body: "Long-form · audio · reels" },
+    { num: "01", label: "Import", body: "Video 1 required · mics optional" },
+    { num: "02", label: "Sync", body: "Auto-skipped on single-source" },
+    { num: "03", label: "Editor", body: "Multi-track timeline & overlays" },
+    { num: "04", label: "Audio Export", body: "Clean MP3 master" },
+    { num: "05", label: "Viral Clips", body: "Mark in/out · 9:16 reels" },
+    { num: "06", label: "Distribution", body: "Stage every output" },
   ];
   return (
     <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">

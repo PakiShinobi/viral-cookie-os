@@ -14,18 +14,24 @@ import { PIPELINE_STAGES } from "./types";
  *
  * UI components should never hardcode stage strings — read from here.
  */
+/**
+ * Stage IDs are kept stable so existing local projects continue to load
+ * with their pipeline state intact, even though the labels have shifted
+ * to the editor-first vocabulary (Import / Sync / Editor / Audio / Viral
+ * Clips / Distribution).
+ */
 export const PIPELINE_STAGE_META: Record<PipelineStage, PipelineStageMeta> = {
   imported: {
     stage: "imported",
     number: 1,
-    label: "Imported",
+    label: "Import",
     shortLabel: "Import",
-    description: "Bring all source media into the project.",
+    description: "Bring source media into the project — one video minimum.",
     checklist: [
-      "Camera 1 footage uploaded",
-      "Camera 2 footage uploaded",
-      "Mic 1 audio uploaded",
-      "Mic 2 audio uploaded",
+      "Video 1 / Camera A imported",
+      "Video 2 / Camera B (optional)",
+      "Mic 1 (optional)",
+      "Mic 2 (optional)",
     ],
     action: {
       id: "sync_media",
@@ -37,10 +43,10 @@ export const PIPELINE_STAGE_META: Record<PipelineStage, PipelineStageMeta> = {
   synced: {
     stage: "synced",
     number: 2,
-    label: "Synced",
+    label: "Sync",
     shortLabel: "Sync",
     description:
-      "Align mic audio to camera tracks and lock the master timeline.",
+      "Align mic audio to camera tracks. Auto-skipped on single-source projects.",
     checklist: [
       "Detect waveform offset across tracks",
       "Lock multi-cam to mic timecode",
@@ -56,10 +62,10 @@ export const PIPELINE_STAGE_META: Record<PipelineStage, PipelineStageMeta> = {
   full_episode_edit: {
     stage: "full_episode_edit",
     number: 3,
-    label: "Full Episode",
-    shortLabel: "Edit",
+    label: "Editor",
+    shortLabel: "Editor",
     description:
-      "Assemble the full episode: switching, sponsors, name cards, CTAs.",
+      "Cut on the multi-track timeline: switching, overlays, name cards, CTAs.",
     checklist: [
       "Trim start and end",
       "Camera switching pass",
@@ -69,15 +75,15 @@ export const PIPELINE_STAGE_META: Record<PipelineStage, PipelineStageMeta> = {
     ],
     action: {
       id: "create_full_episode",
-      label: "Create Full Episode",
-      runningLabel: "Assembling episode",
+      label: "Open Editor",
+      runningLabel: "Opening editor",
     },
     targets: ["youtube"],
   },
   audio_export: {
     stage: "audio_export",
     number: 4,
-    label: "Audio Episode",
+    label: "Audio Export",
     shortLabel: "Audio",
     description:
       "Render a clean audio-only master for podcast platforms.",
@@ -100,10 +106,10 @@ export const PIPELINE_STAGE_META: Record<PipelineStage, PipelineStageMeta> = {
     label: "Viral Clips",
     shortLabel: "Clips",
     description:
-      "Scan the episode for hook moments and generate 9:16 reels.",
+      "Mark hook moments and produce 9:16 reels under 60 seconds.",
     checklist: [
-      "Scan transcript for hook moments",
-      "Generate clip suggestions up to 60s",
+      "Identify hook moments",
+      "Mark in/out regions",
       "Reframe to 9:16",
       "Burn in captions",
     ],
@@ -117,8 +123,8 @@ export const PIPELINE_STAGE_META: Record<PipelineStage, PipelineStageMeta> = {
   ready_to_publish: {
     stage: "ready_to_publish",
     number: 6,
-    label: "Ready to Publish",
-    shortLabel: "Publish",
+    label: "Distribution",
+    shortLabel: "Distribute",
     description: "Stage every output for delivery to the platforms.",
     checklist: [
       "YouTube long-form",
@@ -148,38 +154,43 @@ export const MEDIA_SLOTS: ReadonlyArray<{
   trackType: "video" | "audio";
   accept: string;
   hint: string;
+  required: boolean;
 }> = [
   {
     slot: "camera_1",
-    label: "Camera 1",
-    shortLabel: "CAM 1",
+    label: "Video 1 · Camera A",
+    shortLabel: "V1",
     trackType: "video",
     accept: "video/*",
-    hint: "Primary host camera",
+    hint: "Primary camera. Required.",
+    required: true,
   },
   {
     slot: "camera_2",
-    label: "Camera 2",
-    shortLabel: "CAM 2",
+    label: "Video 2 · Camera B",
+    shortLabel: "V2",
     trackType: "video",
     accept: "video/*",
-    hint: "Guest / B-roll camera",
+    hint: "Optional second camera angle.",
+    required: false,
   },
   {
     slot: "mic_1",
     label: "Mic 1",
-    shortLabel: "MIC 1",
+    shortLabel: "M1",
     trackType: "audio",
     accept: "audio/*",
-    hint: "Host microphone",
+    hint: "Host microphone. Optional.",
+    required: false,
   },
   {
     slot: "mic_2",
     label: "Mic 2",
-    shortLabel: "MIC 2",
+    shortLabel: "M2",
     trackType: "audio",
     accept: "audio/*",
-    hint: "Guest microphone",
+    hint: "Guest microphone. Optional.",
+    required: false,
   },
 ];
 
