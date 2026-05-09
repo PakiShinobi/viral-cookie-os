@@ -1,6 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import type { Content } from "@/lib/types";
 import Link from "next/link";
+import { PodcastProjectsStrip } from "@/components/podcast/podcast-projects-strip";
 
 const stageBadgeColor: Record<string, string> = {
   idea: "bg-zinc-500/10 text-zinc-400",
@@ -31,13 +32,23 @@ export default async function ContentListPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           Content
         </h1>
-        <Link
-          href="/content/new"
-          className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-hover"
-        >
-          New Content
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/podcast/new"
+            className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            New Podcast
+          </Link>
+          <Link
+            href="/content/new"
+            className="rounded-lg border border-border px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:border-border-strong hover:text-foreground"
+          >
+            New Content
+          </Link>
+        </div>
       </div>
+
+      <PodcastProjectsStrip variant="list" />
 
       {content.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface py-16 text-center">

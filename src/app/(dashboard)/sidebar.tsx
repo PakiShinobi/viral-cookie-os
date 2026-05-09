@@ -4,6 +4,18 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
+const PodcastIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+    <rect x="5" y="1.5" width="5" height="8" rx="2.5" stroke="currentColor" strokeWidth="1.2" />
+    <path
+      d="M2.5 7.5C2.5 10.2614 4.7386 12.5 7.5 12.5C10.2614 12.5 12.5 10.2614 12.5 7.5M7.5 12.5V14"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 const DashboardIcon = () => (
   <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
     <rect x="1" y="1" width="5.5" height="5.5" rx="1" fill="currentColor" opacity=".8" />
@@ -50,13 +62,49 @@ const ProfileIcon = () => (
   </svg>
 );
 
-const links = [
-  { href: "/dashboard", label: "Dashboard", Icon: DashboardIcon },
-  { href: "/content", label: "Content", Icon: ContentIcon },
-  { href: "/titles", label: "Titles", Icon: TitlesIcon },
-  { href: "/calendar", label: "Calendar", Icon: CalendarIcon },
-  { href: "/automation", label: "Automation", Icon: AutomationIcon },
-  { href: "/profile", label: "Profile", Icon: ProfileIcon },
+type Link = {
+  href: string;
+  label: string;
+  Icon: () => React.JSX.Element;
+  primary?: boolean;
+};
+
+type Section = {
+  label: string;
+  links: Link[];
+};
+
+/**
+ * Navigation is grouped to make Podcast the primary product.
+ *
+ * - STUDIO: the podcast workflow itself
+ * - WORKSPACE: supporting surfaces inherited from the previous OS
+ * - ACCOUNT: profile / settings
+ *
+ * Sectioned nav keeps the new pillar at the top without removing what's
+ * already in place.
+ */
+const sections: Section[] = [
+  {
+    label: "Studio",
+    links: [
+      { href: "/podcast", label: "Podcast", Icon: PodcastIcon, primary: true },
+    ],
+  },
+  {
+    label: "Workspace",
+    links: [
+      { href: "/dashboard", label: "Dashboard", Icon: DashboardIcon },
+      { href: "/content", label: "Content", Icon: ContentIcon },
+      { href: "/titles", label: "Titles", Icon: TitlesIcon },
+      { href: "/calendar", label: "Calendar", Icon: CalendarIcon },
+      { href: "/automation", label: "Automation", Icon: AutomationIcon },
+    ],
+  },
+  {
+    label: "Account",
+    links: [{ href: "/profile", label: "Profile", Icon: ProfileIcon }],
+  },
 ];
 
 export function Sidebar({ email }: { email: string }) {
@@ -70,39 +118,77 @@ export function Sidebar({ email }: { email: string }) {
   }
 
   return (
-    <aside className="flex w-56 flex-col border-r border-border bg-surface">
+    <aside className="flex w-60 flex-col border-r border-border bg-surface">
       <div className="border-b border-border px-4 py-[18px]">
         <div className="flex items-center gap-2.5">
           <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md bg-accent">
             <span className="text-[10px] font-bold text-white">VC</span>
           </div>
-          <span className="text-[13px] font-semibold tracking-tight text-foreground">
-            Viral Cookie OS
-          </span>
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold tracking-tight text-foreground">
+              Viral Cookie OS
+            </p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted">
+              Podcast Studio
+            </p>
+          </div>
         </div>
       </div>
 
-      <nav className="flex-1 p-2">
-        <ul className="space-y-0.5">
-          {links.map((link) => {
-            const active = pathname.startsWith(link.href);
-            return (
-              <li key={link.href}>
-                <Link
-                  href={link.href}
-                  className={`flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] font-medium transition-colors ${
-                    active
-                      ? "bg-surface-2 text-foreground"
-                      : "text-muted hover:bg-surface-2 hover:text-foreground"
-                  }`}
-                >
-                  <link.Icon />
-                  {link.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+      <nav className="flex-1 space-y-5 p-3">
+        {sections.map((section) => (
+          <div key={section.label} className="space-y-1.5">
+            <p className="px-3 font-mono text-[9px] uppercase tracking-[0.22em] text-muted">
+              {section.label}
+            </p>
+            <ul className="space-y-0.5">
+              {section.links.map((link) => {
+                const active = pathname.startsWith(link.href);
+                if (link.primary) {
+                  return (
+                    <li key={link.href}>
+                      <Link
+                        href={link.href}
+                        className={`group relative flex items-center gap-2.5 overflow-hidden rounded-lg border px-3 py-2 text-[13px] font-medium transition-colors ${
+                          active
+                            ? "border-accent/50 bg-accent-subtle text-foreground"
+                            : "border-border bg-surface-2 text-foreground hover:border-border-strong"
+                        }`}
+                      >
+                        <span
+                          className={
+                            active ? "text-accent" : "text-foreground/80"
+                          }
+                        >
+                          <link.Icon />
+                        </span>
+                        <span>{link.label}</span>
+                        <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.18em] text-muted">
+                          {active ? "Active" : "Studio"}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                }
+                return (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      className={`flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] font-medium transition-colors ${
+                        active
+                          ? "bg-surface-2 text-foreground"
+                          : "text-muted hover:bg-surface-2 hover:text-foreground"
+                      }`}
+                    >
+                      <link.Icon />
+                      {link.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       <div className="border-t border-border px-4 py-4">

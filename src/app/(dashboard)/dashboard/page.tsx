@@ -7,6 +7,7 @@ import type {
 } from "@/lib/types";
 import Link from "next/link";
 import { PageShell } from "@/components/ui/page-shell";
+import { PodcastProjectsStrip } from "@/components/podcast/podcast-projects-strip";
 import { MetricCard } from "./metric-card";
 import { ActionQueue } from "./action-queue";
 import { WeekStrip } from "./week-strip";
@@ -158,13 +159,24 @@ export default async function DashboardPage() {
           </h1>
           <p className="mt-1 text-sm text-muted">{dateDisplay}</p>
         </div>
-        <Link
-          href="/content/new"
-          className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-hover"
-        >
-          New Content
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/podcast/new"
+            className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            New Podcast
+          </Link>
+          <Link
+            href="/content/new"
+            className="rounded-lg border border-border px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:border-border-strong hover:text-foreground"
+          >
+            New Content
+          </Link>
+        </div>
       </div>
+
+      {/* Podcast Studio strip — primary product surfaces first */}
+      <PodcastProjectsStrip />
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
